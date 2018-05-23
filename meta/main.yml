@@ -1,0 +1,31 @@
+# Meta: Telekom Security Linux OS Hardening
+
+galaxy_info:
+  author: Markus Schumburg
+  description: Telekom Security Linux OS Compliance
+  company: T-Systems International GmbH
+  license: Apache License, Version 2.0
+
+  min_ansible_version: 2.4.x
+  platforms:
+    - name: Ubuntu
+      versions:
+        - 14.04 (server)
+        - 16.04 (server)
+  # - name: RedHat
+  #   versions:
+  #   - 7.0 (server)
+  # - name: Oracle Linux
+  #   versions:
+  #   - 7.0 (server)
+  # - name: CentOS
+  #   versions:
+  #   - 7.0 (server)
+
+  galaxy_tags:
+    - security
+    - hardening
+    - compliance
+    - linux
+
+  dependencies: []

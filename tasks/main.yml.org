@@ -1,0 +1,67 @@
+---
+# ------------------------------------------------------------------------
+# Main Tasks: Telekom Security Linux OS Compliance Check
+# ------------------------------------------------------------------------
+
+# ========================================================================
+# Verification if playbook is started with '--check' option. If not throw
+# error and end play!
+- fail:
+    msg: "WARNING: Playbooks for compliance checks must be started with '--check' option!"
+  when: ansible_check_mode == false
+# ========================================================================
+
+# Stop playbook if Linux distro is not Ubuntu or if Ubuntu version is older
+# than 14.04.
+- fail:
+    msg: "Your {{ansible_distribution}} version {{ ansible_distribution_version }} is not supported!"
+  when: ansible_distribution != "Ubuntu" or
+      (ansible_distribution_version != "14.04" and ansible_distribution_version != "16.04")
+
+# Install python-apt if missing. Tool is needed to use apt with Ansible.
+- name: install python-apt
+  package:
+    name: 'python-apt'
+    state: present
+  check_mode: no
+  when: ansible_distribution == "Ubuntu"
+
+# Read variables for detected OS from '/vars/<linux-os>.yml' files
+- name: read variables for detected os
+  include_vars: "{{ item }}"
+  with_first_found:
+    - files:
+      - "{{ ansible_os_family }}.yml"
+      - "{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml"
+      - "{{ ansible_distribution }}.yml"
+      skip: true
+
+# ------------------------------------------------------------------------
+# Start compliance checks
+# ------------------------------------------------------------------------
+
+- block:
+    - name: Check compliance of system hardening
+      import_tasks: compliance_01_system_hardening.yml
+      tags: 01_system_hardening
+
+    - name: Check compliance of system update
+      import_tasks: compliance_02_system_update.yml
+      tags: 02_system_update protecting data
+
+    - name: Check compliance of
+      import_tasks: compliance_03_protecting_data.yml
+      tags: 03_protecting_data
+
+    - name: Check compliance of authentication and authorization
+      import_tasks: compliance_04_authentication_authorization.yml
+      tags: 04_authentication_authorization
+
+    - name: Check compliance of logging
+      import_tasks: compliance_05_logging.yml
+      tags: 05_logging
+
+    - name: Check compliance of system management
+      import_tasks: compliance_06_system_management.yml
+      tags: 06_system_management
+  when: ansible_check_mode == true

@@ -1,0 +1,45 @@
+---
+# ------------------------------------------------------------------------
+# Tasks: Telekom Security Linux OS Compliance
+# SecReq: 03 Protecting Data & Information
+# ------------------------------------------------------------------------
+
+# ========================================================================
+# Verification if playbook is started with '--check' option. If not throw
+# error and end play!
+- fail:
+    msg: "WARNING: Playbooks for compliance checks must be started with '--check' option!"
+  when: ansible_check_mode == false
+# ========================================================================
+
+# Req 19: Banners and motd must not contain any sensitive data.
+
+- block:
+    - name: req-019.1 check banner text
+      shell: cat '{{ item }}'
+      register: check_banner
+      failed_when: check_banner.stdout != use_banner
+      changed_when: false
+      check_mode: no
+      with_items:
+        - "/etc/motd"
+        - "/etc/issue"
+        - "/etc/issue.net"
+  rescue:
+    - debug:
+        msg: "WARNING: Banners are not correct!"
+
+- block:
+    - name: req-019.2 check update-motd.d
+      replace:
+        dest: '{{ item }}'
+        regexp: '^session\ +optional\ +pam_motd.so*'
+        replace: '# session  optional  pam_motd.so'
+      with_items:
+        - "/etc/pam.d/login"
+        - "/etc/pam.d/sshd"
+      register: check_motd
+      failed_when: check_motd.changed != false
+  rescue:
+    - debug:
+        msg: "WARNING: Motd.d (PAM) includes sensitive data!"

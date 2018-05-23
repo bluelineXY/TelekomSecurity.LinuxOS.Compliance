@@ -1,0 +1,118 @@
+---
+# ------------------------------------------------------------------------
+# Vars: Telekom Security Linux OS Hardening & Compliance
+# Specific vars for RedHat 7.x, CentOS 7.x & Oracle Linux 7.x
+# ------------------------------------------------------------------------
+
+# Don't change this file. Variables to change by the user are located
+# in file '/default/main.yml'!
+
+# -------------------
+# 01 System Hardening
+# -------------------
+
+# Req 1: Unused services and protocols must be deactivated.
+check_open_tcp: 'ss -ntlp'
+grep_open_tcp: 'LISTEN'
+check_open_udp: 'ss -nulp'
+grep_open_udp: 'UNCONN'
+
+
+# Req 1: Unused services and protocols must be deactivated.
+# Req 8: Unused filesystems must be disabled.
+modprobe_package: 'module-init-tools'
+modprobe_tool: 'rmmod'
+
+# Req 2: The reachability of services must be restricted.
+iptables_tools: 'iptables-services'
+
+# ---------------------------------
+# 04 Authentication & Authorization
+# ---------------------------------
+
+# Req 20: User accounts must be used that allow unambiguous identification
+# of the user.
+use_uid_max: 999
+use_nologin_path: /sbin/nologin
+
+# Req 42: Permissions of security relevant configuration files must be
+# restricted.
+# File: /etc/passwd
+passwd_file: "/etc/passwd"
+passwd_owner: "root"
+passwd_group: "root"
+passwd_mode: "0644"
+
+# File: /etc/passwd-
+passwdm_file: "/etc/passwd-"
+passwdm_owner: "root"
+passwdm_group: "root"
+passwdm_mode: "0644"
+
+# File: /etc/shadow
+shadow_file: "/etc/shadow"
+shadow_owner: "root"
+shadow_group: "root"
+shadow_mode: "0000"
+
+# File: /etc/shadow-
+shadowm_file: "/etc/shadow-"
+shadowm_owner: "root"
+shadowm_group: "root"
+shadowm_mode: "0000"
+
+# File: /etc/gshadow
+gshadow_file: "/etc/gshadow"
+gshadow_owner: "root"
+gshadow_group: "root"
+gshadow_mode: "0000"
+
+# File: /etc/gshadow-
+gshadowm_file: "/etc/gshadow-"
+gshadowm_owner: "root"
+gshadowm_group: "root"
+gshadowm_mode: "0000"
+
+# File: /etc/group
+group_file: "/etc/group"
+group_owner: "root"
+group_group: "root"
+group_mode: "0644"
+
+# File: /etc/group-
+groupm_file: "/etc/group-"
+groupm_owner: "root"
+groupm_group: "root"
+groupm_mode: "0644"
+
+# File: /boot/grupb2/grub.cfg
+grub_file: "/boot/grupb2/grub.cfg"
+grub_owner: "root"
+grub_group: "root"
+grub_mode: "0600"
+
+# Log files in /var/log
+logfile_mode: "o-wx"
+
+# File: /etc/sysctl.conf
+sysctl_file: "/etc/sysctl.conf"
+sysctl_owner: "root"
+sysctl_group: "root"
+sysctl_mode: "0640"
+
+# File: /etc/ssh/sshd_config
+sshd_conf_file: "/etc/ssh/sshd_config"
+sshd_conf_owner: "root"
+sshd_conf_group: "root"
+sshd_conf_mode: "og-rwx"
+
+# Req 43: If a system has Internet facing services or is a
+# virtualization host, a MAC solution must be used.
+use_mac_type: 'apparmor'
+
+# --------------------
+# 06 System Management
+# --------------------
+
+# SSH
+sshd_service_name: ssh

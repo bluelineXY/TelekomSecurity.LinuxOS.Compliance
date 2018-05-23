@@ -1,0 +1,63 @@
+---
+# ------------------------------------------------------------------------
+# Tasks: Telekom Security Linux OS Compliance
+# SecReq: 02 System Update
+# ------------------------------------------------------------------------
+
+# ========================================================================
+# Verification if playbook is started with '--check' option. If not throw
+# error and end play!
+- fail:
+    msg: "WARNING: Playbooks for compliance checks must be started with '--check' option!"
+  when: ansible_check_mode == false
+# ========================================================================
+
+# Req 16: Software and hardware components that are no longer supported by
+# vendor, producer or developer must not be used.
+# --- No automation! Manual check needed. ---
+
+# Req 17: GPG check for repository server must be activated and corresponding
+# keys for a trustable repository must be configured.
+# Not implemnted in this playbook version.
+
+# Req 18: Emerged vulnerabilities in software and hardware of a system
+# must be fixed or protected against misuse.
+
+- name: update repository cache (ubuntu)
+  apt:
+    upgrade: no
+    update_cache: yes
+    cache_valid_time: 3600
+    force_apt_get: yes
+  register: cache_update
+  ignore_errors: yes
+  changed_when: false
+  when: ansible_os_family == "Debian"
+
+- block:
+    - name: req-018.0 check if not installed updates available
+      shell: apt-get upgrade -s | grep "upgraded," | cut -d " " -f1
+      args:
+        warn: false
+      register: open_updates
+      failed_when: open_updates.stdout != "0"
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: System is not up-to-date. Patches are missing!"
+  when: cache_update.changed == true and ansible_os_family == "Debian"
+
+- block:
+    - name: req-018.0 check if not installed updates available
+      shell: yum check-update 2>/dev/null | grep -i "updates$" | wc -l
+      args:
+        warn: false
+      register: open_updates
+      failed_when: open_updates.stdout != "0"
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: System is not up-to-date. Patches are missing!"
+  when: ansible_os_family == "RedHat"

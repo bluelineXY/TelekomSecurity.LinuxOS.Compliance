@@ -1,0 +1,130 @@
+---
+# ------------------------------------------------------------------------
+# Default Vars: Telekom Security Linux OS Hardening & Compliance
+# ------------------------------------------------------------------------
+
+# ========================================================================
+# Please set values for variables in this file before running the Ansible
+# playbook!
+# ========================================================================
+
+# ------------------------------------------------------------------------
+# IMPORTANT:
+# The playbook disables all SSH access without public-key. A user with
+# public key must be configured on system or a path to a public key file
+# must be configured (var 'use_key_file'). Otherwise, remote login with
+# SSH is not longer possible without a public key!
+# ------------------------------------------------------------------------
+# (Note: use 'ssh-keygen -t rsa -b 4096' to generate a private/public
+#        key pair.)
+# ------------------------------------------------------------------------
+
+# Set path to public-key file (e.g. id_rsa.pub) for Ansible user!
+config_key_file: false
+use_key_file_ansible: ""
+
+# If 'set_new_user' is false the Ansible user will be used instead.
+config_new_user: false
+# Change vars 'use_user_name' and 'use_password' to your own values.
+use_user_name: ""
+use_password: ""
+# Set path to public-key file (e.g. id_rsa.pub) for new user!
+use_key_file_new: ""
+# Do not change groups sudo and ssh! Add only additional groups if
+# needed. Otherwise, you can't login afterwards!
+use_groups:
+  - "sudo"
+  - "ssh"
+
+# Set variable to false if grub bootloader is not used (e.g. for virtual
+# machines)
+config_bootloader_grub: true
+
+# Req 9: Dedicated partitions must be used for growing content that can
+# influence the availability of the system.
+
+# ------------------------------------------------------------------------
+# IMPORTANT (for req 09)
+#
+#           Partitions must be generated during OS installation!
+#   Set variables 'set_partition_...' to false if partitions not exist.
+#
+# ------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------
+# Enable ('true') the appropriate variable for existing partitions.
+# ------------------------------------------------------------------------
+config_partition_tmp: false
+# Use a partition for '/var' or partitions for '/var/tmp' and '/var/log'.
+config_partition_var: false
+# Use partitions for '/var/tmp' and '/var/log' or a partition for '/var'.
+config_partition_var_tmp: false
+config_partition_var_log: false
+
+# Enable if extra partition for /home is used.
+config_partition_home: false
+
+# Req 15: IPv6 protocol stack must securely configured.
+# ------------------------------------------------------------------------
+# Enable ('true') if IPv6 will be used.
+# ------------------------------------------------------------------------
+config_ipv6_enable: false
+
+# Req 18: Emerged vulnerabilities in software and hardware of a system
+# must be fixed or protected against misuse.
+# ------------------------------------------------------------------------
+# Enable ('true') if system upgrade should be done.
+# ------------------------------------------------------------------------
+do_system_upgrade: false
+
+# Req 26: The system must be connected to a central system for user
+# administration.
+# ------------------------------------------------------------------------
+# Not implemented in this version!
+# ------------------------------------------------------------------------
+
+# Req 63: Security relevant logging data must be send to an external
+# system direct after their creation.
+# ------------------------------------------------------------------------
+# You can only use rsyslog in this version!
+# Note: syslog-ng will be implemented later!
+# ------------------------------------------------------------------------
+# To be compliant set 'true' for variable 'use_central_logging'.
+config_central_logging: false
+# In this version only rsyslog is supported!
+use_syslog_type: "rsyslog"
+# To be compliant set IPv4 and/or IPv6 address or domain name of
+# logging server.
+use_logging_server: ""
+# use_logging_server: "<ip-address>"
+
+# Req 64: System time must be synchronized against a reference time source.
+# To be compliant set 'true' for variable 'use_ntp'.
+config_ntp: false
+# To be compliant set IPv4 and/or IPv6 address or domain name of
+# ntp server(s).
+use_ntp_servers:
+  - "ntp1.t-online.de"
+#  - "<ip4-address or hostname>"
+#  - "<ip6-address or hostname>"
+
+# The scripts sets the timezone to CET (UTC+1). Disable (false) or
+# changes timezone if needed!
+set_timezone: true
+use_timezone: "Europe/Berlin"
+
+# Req 65: The management of the operating system must be done via a dedicated
+# management network which is independent from the production network.
+# ------------------------------------------------------------------------
+# IMPORTANT:
+# Set an IPv4 and/or IPv6 address for management network for your
+# environment!
+# ------------------------------------------------------------------------
+# Enable if a dedicated IPv4 management interface is used.
+config_mgmt_interface_ipv4: false
+# Define IPv4 address for mgmt interface.
+use_mgmt_interface_ipv4: "0.0.0.0"
+# Enable if a dedicated IPv6 management interface is used.
+config_mgmt_interface_ipv6: false
+# Define IPv6 address for mgmt interface.
+use_mgmt_interface_ipv6: "::"

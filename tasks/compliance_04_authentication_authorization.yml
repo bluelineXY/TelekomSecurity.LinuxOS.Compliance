@@ -1,0 +1,771 @@
+---
+# ------------------------------------------------------------------------
+# Tasks: Telekom Security Linux OS Compliance
+# SecReq: 04 Authentication & Authorization
+# ------------------------------------------------------------------------
+
+# ========================================================================
+# Verification if playbook is started with '--check' option. If not throw
+# error and end play!
+- fail:
+    msg: "WARNING: Playbooks for compliance checks must be started with '--check' option!"
+  when: ansible_check_mode == false
+# ========================================================================
+
+# Set variable 'uid_max' needed for requirements in this file.
+- name: get uid_min from file login.defs
+  shell: awk '/^\s*UID_MIN\s*([0-9]*).*?$/ {print $2}' /etc/login.defs
+  register: uid_min
+  changed_when: false
+  check_mode: no
+
+- name: calculate uid_max from uid_min
+  set_fact:
+    uid_max: '{{ uid_min.stdout | int - 1 }}'
+  when: uid_min is defined
+
+- name: set uid_max if no login.defs exist
+  set_fact:
+    uid_max: "{{ use_uid_max }}"
+  when: not uid_min
+
+# Req 20: User accounts must be used that allow unambiguous identification
+# of the user.
+
+- block:
+    - name: req-020.0 get all system accounts
+      shell: awk -F':' '{ if ( $1 != "{{ use_user_name }}" && $3 >= {{ uid_max }} && $7 != "{{ use_nologin_path }}" ) print $1 }' /etc/passwd
+      register: check_sys_accounts
+      failed_when: check_sys_accounts.stdout != ""
+      check_mode: no
+  rescue:
+     - debug:
+         msg: "WARNING: The following local user exists: {{ check_sys_accounts.stdout_lines }}!"
+
+# Req 21: System accounts must be non-login
+
+- block:
+    - name: req-021.0 check for system accounts with login
+      shell: awk -F':' '($1!="root" && $1!="sync" && $1!="shutdown" && $1!="halt" && $3<{{ uid_max }} && $7=="/bin/bash") {print $1}' /etc/passwd
+      register: check_sys_user
+      failed_when: check_sys_user.stdout != ""
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Found critical system accounts with login possebilities: {{check_sys_user.stdout_lines}}!"
+
+# Req 22: User accounts must be protected against unauthorized usage by at
+# least one authentication attribute.
+
+- block:
+    - name: req-022.0 check for user accounts without password
+      shell: awk -F":" '($2 == "" & $2 != "!" & $2 !="*") {print $1}' /etc/shadow
+      register: user_without_pw
+      failed_when: user_without_pw.stdout != ""
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Found users without a password: {{ user_without_pw.stdout_lines }}!"
+
+# Req 23: User accounts with extensive rights must be protected with two
+# authentication attributes.
+# Requirement is compliant if only SSH with key based authentication is
+# used for management access.
+
+# Req 24: The privileges for user accounts and applications must be reduced
+# to the mimimum required for the tasks they have to perform.
+# --- No automation! Manual check needed. ---
+
+# Req 25: The system must be connected to a central system for user
+# administration.
+# --- Note: Not implemented in this version ---
+
+# Req 26: Authentication must be used for single user mode.
+
+- block:
+    - name: req-26.0 check if root has a password set
+      shell: grep "^root:[*\!]:" /etc/shadow
+      register: check_root_pw
+      failed_when: check_root_pw.stdout != ""
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Account root did not have a password set!"
+  when: ansible_os_family == "Debian"
+
+- block:
+    - name: req-026.0 set single user mode
+      lineinfile:
+        dest: '{{ item }}'
+        state: present
+        regexp: '^ExecStart=*'
+        line: 'ExecStart=-/bin/sh -c "/usr/sbin/sulogin; /usr/bin/systemctl --fail --no-block default"'
+      register: check_sum
+      failed_when: (check_sum is changed)
+      with_items:
+        - "/usr/lib/systemd/system/rescue.service"
+        - "/usr/lib/systemd/system/emergency.service"
+  rescue:
+    - debug:
+        msg: "WARNING: Single user mode is not set!"
+  when: ansible_os_family == "RedHat"
+
+# ---------------------
+# User & Group Settings
+# ---------------------
+
+# Req 27: Passwords must be protected with an encryption function.
+
+- block:
+    - name: req-027.1 check if password encryption is sha-512 in login.defs
+      lineinfile:
+        dest: '/etc/login.defs'
+        state: present
+        regexp: '^ENCRYPT_METHOD*'
+        line: 'ENCRYPT_METHOD SHA512'
+      register: check_pass_encrypt
+      failed_when: (check_pass_encrypt is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Password encryption in login.defs is not SHA-512!"
+
+- block:
+    - name: req-027.2 check max rounds for sha-512
+      lineinfile:
+        dest: '/etc/login.defs'
+        state: present
+        regexp: '^SHA_CRYPT_MAX_ROUNDS*'
+        line: 'SHA_CRYPT_MAX_ROUNDS {{ use_sha512_rounds }}'
+      register: check_pass_rounds
+      failed_when: (check_pass_rounds is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Password encryption rounds in login.defs wrong!"
+
+# Req 28: No legacy + entries must exist in files passwd, shadows and group.
+
+- block:
+    - name: req-028.1 check passwd file for legacy entry
+      shell: awk -F":" '($1 == "+") {print $1}' /etc/passwd
+      register: search_leg_passwd
+      failed_when: search_leg_passwd.stdout == "+"
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Found legacy entry in passwd file."
+
+- block:
+    - name: req-028.2 check shadow file for legacy entry
+      shell: awk -F":" '($1 == "+") {print $1}' /etc/shadow
+      register: search_leg_shadow
+      failed_when: search_leg_shadow.stdout == "+"
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Found legacy entry in shadow file."
+
+- block:
+    - name: req-028.3 check group file for legacy entry
+      shell: awk -F":" '($1 == "+") {print $1}' /etc/group
+      register: search_leg_group
+      failed_when: search_leg_group.stdout == "+"
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Found legacy entry in passwd, shadow or group."
+
+# Req 29: Home directories for all users must exist.
+
+- name: check users for home directories
+  shell: awk -F':' '{ if ( $3 >= {{ uid_max }} && $7 != "{{ use_nologin_path }}" ) print $1 }' /etc/passwd
+  changed_when: false
+  register: user_accounts
+  check_mode: no
+
+- block:
+    - name: req-029.0 check if home dir exists
+      stat:
+        path: "/home/{{ item }}"
+      register: check_dirs
+      failed_when: check_dirs.stat.isdir is undefined
+      with_items: "{{ user_accounts.stdout_lines | default([]) }}"
+  rescue:
+     - debug:
+         msg: "WARNING: User without a home directory exists!"
+
+# Req 30: A user's home directory must owned by the user and have permission
+# mode 750.
+
+- name: check users for home directories
+  command: ls /home/
+  register: user_dirs
+  changed_when: false
+  check_mode: no
+
+- block:
+    - name: req-030.0 change user and permissions of home directories
+      file:
+        path: "/home/{{ item }}"
+        mode: 0750
+        state: directory
+        owner: "{{ item }}"
+        group: "{{ item }}"
+      register: check_home
+      failed_when: (check_home is changed)
+      with_items: "{{ user_dirs.stdout_lines | default([]) }}"
+  rescue:
+    - debug:
+        msg: "WARNING: User home directories with wrong permissions exists!"
+
+# Req 31: Group for the root account must be GID 0 (default).
+
+- block:
+    - name: req-031.0 check if gid is 0 for root
+      shell: awk -F':' '{if ($1 == "root") print $4}' /etc/passwd
+      register: check_root_gid
+      failed_when: check_root_gid.stdout != "0"
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: GID of root is not 0!"
+
+# Req 32: Root must be the only UID 0 account (default).
+
+- block:
+    - name: req-032.0 check for users with uid 0 other than root
+      shell: awk -F':' '{ if ( $1 != "root" && $3 == 0 ) print $1 }' /etc/passwd
+      register: search_uid_zero
+      failed_when: search_uid_zero.stdout != ""
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Found more than one user with uid 0: {{ search_uid_zero.stdout_lines }}!"
+
+# Req 33: All groups in /etc/passwd must exist in /etc/group (default).
+
+- name: read users from /etc/passwd
+  shell: awk -F':' '{if ($1 != "sync" && $7 != "{{ use_nologin_path }}" && $7 != "/bin/false") print $1}' /etc/passwd
+  register: read_users
+  changed_when: false
+  check_mode: no
+
+- block:
+    - name: req-033.0 check if group exist for users
+      shell: awk -F':' '{if ($1 == "{{ item }}" ) print $1}' /etc/group
+      register: check_groups
+      failed_when: check_groups.stdout == ""
+      changed_when: false
+      check_mode: no
+      with_items: "{{ read_users.stdout_lines }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Not all groups exists in /etc/group file!"
+
+# Req 34: No duplicate UIDs and GIDs must exist (default).
+
+- name: read uids from /etc/passwd
+  shell: awk -F':' '{print $3}' /etc/passwd
+  register: read_uid
+  changed_when: false
+  check_mode: no
+
+- block:
+    - name: req-034.1 check if duplicated uid exist
+      shell: awk -F':' '{ if ($3 == {{ item }}) print $3}' /etc/passwd | wc -l
+      register: check_uids
+      failed_when: check_uids.stdout >= "2"
+      changed_when: false
+      check_mode: no
+      with_items: "{{ read_uid.stdout_lines }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Duplicated uid exists in /etc/passwd file!"
+
+- name: read gids from /etc/group
+  command: awk -F':' '{print $3}' /etc/group
+  register: read_gid
+  changed_when: false
+  check_mode: no
+
+- block:
+    - name: req-034.2 check if duplicated gid exist
+      shell: awk -F':' '{ if ($3 == {{ item }}) print $3}' /etc/group | wc -l
+      register: check_gids
+      failed_when: check_gids.stdout >= "2"
+      changed_when: false
+      check_mode: no
+      with_items: "{{ read_gid.stdout_lines }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Duplicated gid exists in /etc/group file!"
+
+# Req 35: No duplicate user and group names must exist (default).
+
+- name: read users from /etc/passwd
+  shell: awk -F':' '{print $1}' /etc/passwd
+  register: read_users2
+  changed_when: false
+  check_mode: no
+
+- block:
+    - name: req-035.1 check if duplicated users exist
+      shell: awk -F':' '{ if ($1 == "{{ item }}") print $1}' /etc/passwd | wc -l
+      register: check_users2
+      failed_when: check_users2.stdout >= "2"
+      changed_when: false
+      check_mode: no
+      with_items: "{{ read_users2.stdout_lines }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Duplicated users exists in /etc/passwd file!"
+
+- name: read groups from /etc/group
+  shell: awk -F':' '{print $1}' /etc/group
+  register: read_groups2
+  changed_when: false
+  check_mode: no
+
+- block:
+    - name: req-035.2 check if duplicated groups exist
+      shell: awk -F':' '{ if ($1 == "{{ item }}") print $1}' /etc/group | wc -l
+      register: check_groups2
+      failed_when: check_groups2.stdout >= "2"
+      changed_when: false
+      check_mode: no
+      with_items: "{{ read_groups2.stdout_lines }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Duplicated groups exists in /etc/group file!"
+
+# Req 36: The shadow group must be empty (default).
+
+- block:
+    - name: req-036.1 check if shadow is epmty
+      shell: awk -F':' '{if ($1 == "shadow") print $4}' /etc/group
+      register: check_shadow
+      failed_when: check_shadow.stdout != ""
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Group shadow is not empty!"
+
+- name: read gid from shadow group
+  shell: awk -F':' '{if ($1 == "shadow") print $3}' /etc/group
+  register: read_gid_shadow
+  changed_when: false
+  check_mode: no
+
+- block:
+    - name: req-036.2 check if user is member of shadow
+      shell: awk -F':' '{ if ($4 == "{{ read_gid_shadow.stdout }}") print $4}' /etc/passwd | wc -l
+      register: check_gid_shadow
+      failed_when: check_gid_shadow.stdout != "0"
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: User has shadow as primary group assigned!"
+
+# ----------------------------
+# File & Directory Permissions
+# ----------------------------
+
+# Req 37: The default user umask must be 027 or more restrictive.
+
+- block:
+    - name: req-037.0 check default umask for users
+      lineinfile:
+        dest: '/etc/login.defs'
+        line: 'UMASK {{ use_default_umask }}'
+        regexp: '^UMASK'
+        state: present
+      register: check_umask
+      failed_when: (check_umask is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Umask setting for users in login.defs is not correct!"
+
+# Req 38: Sticky bit must be set on world-writable directories.
+
+- block:
+    - name: req-038.0 search for world-writable directories
+      shell: df --local -P | awk {'if (NR!=1) print $6'} | xargs -I '{}' find '{}' -xdev -type d -perm -0002 \! -perm -1000 2>/dev/null
+      register: find_sticky
+      failed_when: find_sticky.stdout != ""
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: World-writable directories without sticky bit are found!"
+
+# Req 39: No regular files that are world writable must exist.
+
+- block:
+    - name: req-039.0 search for world-writable files
+      shell: df --local -P | awk {'if (NR!=1) print $6'} | xargs -I '{}' find '{}' -xdev -type f -perm -0002 2>/dev/null
+      register: find_world_writable
+      failed_when: find_world_writable.stdout != ""
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: World-writable files are found!"
+
+# Req 40: No regular files and directories without assigned user or group must
+# exist (default).
+
+- block:
+    - name: req-040.1 search for unowned files
+      shell: df --local -P | awk {'if (NR!=1) print $6'} | xargs -I '{}' find '{}' -xdev -nouser | wc -l
+      register: find_unowned
+      changed_when: false
+      failed_when: find_unowned.stdout != "0"
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Found file or directiry without asigned user!"
+
+- block:
+    - name: req-040.2 search for files without group
+      shell: df --local -P | awk {'if (NR!=1) print $6'} | xargs -I '{}' find '{}' -xdev -nogroup | wc -l
+      register: find_no_group
+      changed_when: false
+      failed_when: find_no_group.stdout != "0"
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Found file or directiry without asigned group!"
+
+# Req 41: Not needed SUID and SGID bits must be removed from executables.
+
+- block:
+    - name: req-041.1 check binaries in blacklist for suid/sgid
+      file:
+        path: '{{ item }}'
+        mode: 'a-s'
+        state: 'file'
+        follow: 'yes'
+      register: check_sbit_blacklist
+      failed_when: (check_sbit_blacklist is changed)
+      with_flattened:
+        - "{{ use_default_suid_sgid_blacklist }}"
+        - "{{ use_suid_sgid_blacklist }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Found binaries (blacklist) with unallowed suid/sgid setting!"
+
+- name: find binaries with suid/sgid set
+  shell: df --local -P | awk {'if (NR!=1) print $6'} | xargs -I '{}' find '{}' -xdev -type f \( -perm -4000 -o -perm -2000 \) -print 2>/dev/null
+  register: sbit_binaries
+  changed_when: false
+  check_mode: no
+
+- name: combine found files with default whitelist
+  set_fact:
+    suid: '{{ sbit_binaries.stdout_lines | difference(use_default_suid_sgid_whitelist) }}'
+
+- block:
+    - name: req-041.2 check all found binaries for suid/sgid bit
+      file:
+        path: '{{ item }}'
+        mode: 'a-s'
+        state: 'file'
+        follow: 'yes'
+      register: check_sbit_unknown
+      failed_when: (check_sbit_unknown is changed)
+      with_flattened:
+        - "{{ suid | default([]) | difference(use_suid_sgid_whitelist) }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Found binaries (unknown) with critical suid/sgid setting!"
+
+# Req 42: Permissions of security relevant configuration files must be
+# restricted.
+
+- block:
+    - name: req-042.1 check permissions of all passwd, group & shadow files
+      file:
+        path: "{{ item.path }}"
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      with_items:
+        - { path: "{{ passwd_file }}", owner: "{{ passwd_owner }}", group: "{{ passwd_group }}", mode: "{{ passwd_mode }}" }
+        - { path: "{{ passwdm_file }}", owner: "{{ passwdm_owner }}", group: "{{ passwdm_group }}", mode: "{{ passwdm_mode }}" }
+        - { path: "{{ shadow_file }}", owner: "{{ shadow_owner }}", group: "{{ shadow_group }}", mode: "{{ shadow_mode }}" }
+        - { path: "{{ shadowm_file }}", owner: "{{ shadowm_owner }}", group: "{{ shadowm_group }}", mode: "{{ shadowm_mode }}" }
+        - { path: "{{ gshadow_file }}", owner: "{{ gshadow_owner }}", group: "{{ gshadow_group }}", mode: "{{ gshadow_mode }}" }
+        - { path: "{{ gshadowm_file }}", owner: "{{ gshadowm_owner }}", group: "{{ gshadowm_group }}", mode: "{{ gshadowm_mode }}" }
+        - { path: "{{ group_file }}", owner: "{{ group_owner }}", group: "{{ group_group }}", mode: "{{ group_mode }}" }
+        - { path: "{{ groupm_file }}", owner: "{{ groupm_owner }}", group: "{{ groupm_group }}", mode: "{{ groupm_mode }}" }
+      register: check_passwd_group_permissions
+      failed_when: (check_passwd_group_permissions is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Permissions of passwd/group/shadow file are incorrect!"
+
+- block:
+    - name: req-042.2 check permissions of bootloader config
+      file:
+        path: '{{ grub_file }}'
+        owner: "{{ grub_owner }}"
+        group: "{{ grub_group }}"
+        mode: "{{ grub_mode }}"
+      register: check_grub_permissions
+      failed_when: (check_grub_permissions is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Permissions of grub.cfg are incorrect!"
+
+- name: check for logfiles
+  shell: find /var/log -type f | grep -v "(history.log)"
+  register: check_logfiles
+  changed_when: false
+  check_mode: no
+
+- block:
+    - name: req-042.3 check permissions of logfiles
+      file:
+        path: '{{ item }}'
+        mode: '{{ logfile_mode }}'
+      register: check_logfiles_permissions
+      failed_when: (check_logfiles_permissions is changed)
+      with_items: "{{ check_logfiles.stdout_lines }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Permissions of logfiles are incorrect!"
+
+- block:
+    - name: req-042.4 check permissions for sysctl.conf
+      file:
+        path: '{{ sysctl_file }}'
+        owner: "{{ sysctl_owner }}"
+        group: "{{ sysctl_group }}"
+        mode: "{{ sysctl_mode }}"
+      register: check_sysctl_permissions
+      failed_when: (check_sysctl_permissions is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Permissions of sysctl.conf file is incorrect!"
+
+- block:
+    - name: req-042.5 check permissions of sshd_config config
+      file:
+        path: "{{ sshd_conf_file }}"
+        owner: "{{ sshd_conf_owner }}"
+        group: "{{ sshd_conf_group }}"
+        mode: "{{ sshd_conf_mode }}"
+      register: check_ssh_permissions
+      failed_when: (check_ssh_permissions is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Permissions of sshd_config are incorrect!"
+
+# ------------------------
+# Mandatory Access Control
+# ------------------------
+
+# Req 43: If a system has Internet facing services or is a virtualization host,
+# a MAC solution must be used.
+
+- block:
+    - name: req-043.0 check if mac solution is installed
+      package:
+        name: '{{ use_mac_type }}'
+        state: absent
+      register: check_mac
+      failed_when: check_mac.changed == false
+      changed_when: false
+  rescue:
+    - debug:
+        msg: "WARNING: MAC solution {{ use_mac_type }} is not installed!"
+
+# Req 44: If SELinux or AppArmor is used, it must not be disabled in
+# bootloader configuration.
+
+# SELinux
+#- block:
+#    - name: req-044.1 enable selinux in grub
+#      lineinfile:
+#        dest: '/etc/default/grub'
+#        regexp: '^GRUB_CMDLINE_LINUX_DEFAULT=(.*)'
+#        line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet"'
+#      register: check_sel_grub_1
+#      failed_when: (check_sel_grub_1 is changed)
+#  rescue:
+#    - debug:
+#        msg: "WARNING: SELinux is not enabled in grub!"
+#  when: config_mac == true and
+#     ( use_mac_type == "selinux" and config_bootloader_grub == true )
+
+#- block:
+#    - name: req-044.2 enable selinux in grub
+#      lineinfile:
+#        dest: '/etc/default/grub'
+#        regexp: '^GRUB_CMDLINE_LINUX=(.*)'
+#        line: 'GRUB_CMDLINE_LINUX=""'
+#      register: check_sel_grub_2
+#      failed_when: (check_sel_grub_2 is changed)
+#  rescue:
+#    - debug:
+#        msg: "WARNING: SELinux is not enabled in grub!"
+#  when: config_mac == true and
+#     ( use_mac_type == "selinux" and config_bootloader_grub == true )
+
+# AppArmor
+- block:
+    - name: req-044.1 check if apparmor is enabled in grub
+      lineinfile:
+        dest: '/etc/default/grub'
+        regexp: '^GRUB_CMDLINE_LINUX_DEFAULT=(.*)'
+        line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet"'
+      register: check_aa_grub_1
+      failed_when: (check_aa_grub_1 is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: AppArmor is not enabled in grub!"
+  when: use_mac_type == "apparmor" and
+        ( config_mac == true and check_mac.changed == true )
+
+- block:
+    - name: req-044.2 check if apparmor is enabled in grub
+      lineinfile:
+        dest: '/etc/default/grub'
+        regexp: '^GRUB_CMDLINE_LINUX=(.*)'
+        line: 'GRUB_CMDLINE_LINUX=""'
+      register: check_aa_grub_2
+      failed_when: (check_aa_grub_2 is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: AppArmor is not enabled in grub!"
+  when: use_mac_type == "apparmor" and
+        ( config_mac == true and check_mac.changed == true )
+
+# Req 45: If SELinux is used, its state must be enforced.
+
+#- name: req-045.0 enforce selinux state
+#  lineinfile:
+#    dest: '/etc/selinux/config'
+#    regexp: '^SELINUX=(.*)'
+#    line: 'SELINUX=enforcing'
+#  when: config_mac == true and use_mac_type == "selinux"
+
+# Req 46: If SELinux is used, the policy must be configured.
+
+#- name: req-046.0 configure selinux policy
+#  lineinfile:
+#    dest: '/etc/selinux/config'
+#    regexp: '^SELINUXTYPE=(.*)'
+#    line: 'SELINUXTYPE={{ selinux_type }}'
+#  when: config_mac == true and use_mac_type == "selinux"
+
+# ---<tbd>---------------------------------------------------------
+# Req 47: If SELinux is used, SETroubleshoot and MCS Translation Service must
+# not be installed.
+# Req 48: If SELinux is used, no unconfined daemons must exist.
+# -----------------------------------------------------------------
+
+# Req 49: If AppArmor is used, all profiles must be enforced.
+
+- block:
+    - name: req-049.1 check if apparmor-utils are installed
+      package:
+        name: 'apparmor-utils'
+        state: present
+      register: check_aa_utils
+      failed_when: (check_aa_utils is changed)
+    - name: req-061.2 enforce apparmor profiles
+      shell: aa-unconfined 2>/dev/null | grep "not confined"| wc -l
+      register: check_aa_profiles
+      failed_when: check_aa_profiles.stdout != "0"
+      changed_when: false
+      check_mode: no
+      when: check_aa_utils.changed == false
+  rescue:
+    - debug:
+        msg: "WARNING: AppArmor profiles are not propper enforced!"
+  when: use_mac_type == "apparmor" and
+        ( config_mac == true and check_mac.changed == true )
+
+# ---------------------------------
+# Authentication Parameter Password
+# ---------------------------------
+
+# Req 50: If a password is used as an authentication attribute, it must have
+# at least 8 characters and contain three of the following categories:
+# upper cases, lower case, numbers and special characters.
+
+- block:
+    - name: req-050.1 check if libpam-cracklib is not installed
+      package:
+        name: 'libpam-cracklib'
+        state: absent
+      register: check_cracklib
+      failed_when: (check_cracklib is changed)
+  rescue:
+    - debug:
+        msg: " WARNING: Outdated libpam-cracklib is installed!"
+
+- block:
+    - name: req-050.2 check if libpam-pwquality is installed
+      package:
+        name: "libpam-pwquality"
+        state: present
+      register: check_pwquality
+      failed_when: (check_pwquality is changed)
+  rescue:
+    - debug:
+        msg: " WARNING: Needed libpam-pwquality is not installed!"
+
+- block:
+    - name: req-050.3 check password complexity
+      lineinfile:
+        dest: '/etc/pam.d/common-password'
+        state: present
+        regexp: 'pam_pwquality.so'
+        line: "password\trequisite\t\t\tpam_pwquality.so minlen={{ set_min_length }} minclass={{ set_min_class }} maxrepeat=3"
+      register: check_pw_complexity
+      failed_when: (check_pw_complexity is changed)
+  rescue:
+    - debug:
+        msg: " WARNING: Password complexity rules are not configured!"
+  when: check_pwquality.changed == false
+
+- block:
+    - name: req-050.4 check if password length and encryption is correct
+      lineinfile:
+        dest: '/etc/pam.d/common-password'
+        state: present
+        regexp: 'pam_unix.so'
+        line: "password\t[success=1 default=ignore]\tpam_unix.so obscure use_authtok try_first_pass sha512 minlen=8 remember=5"
+      register: check_pw_length
+      failed_when: (check_pw_length is changed)
+  rescue:
+    - debug:
+        msg: " WARNING: Password length and encryption is not correct!"
+
+# Req 51: If a password is used as an authentication attribute, a protection
+# against brute force and dictionary attacks that hinder password guessing
+# must be implemented.
+
+- block:
+    - name: req-051.0 check brute-force protection
+      lineinfile:
+        dest: '/etc/pam.d/common-auth'
+        state: present
+        insertbefore: 'pam_unix.so nullok_secure'
+        line: "auth\trequired\t\t\tpam_tally2.so deny={{ set_failed_login_attemps }} onerr=fail unlock_time={{ set_unlock_time }} even_deny_root"
+      register: check_bf_protection
+      failed_when: (check_bf_protection is changed)
+  rescue:
+    - debug:
+        msg: " WARNING: Brute-force protection is not correct configured!"

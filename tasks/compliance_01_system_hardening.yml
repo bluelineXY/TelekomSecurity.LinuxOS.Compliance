@@ -1,0 +1,682 @@
+---
+# ------------------------------------------------------------------------
+# Tasks: Telekom Security Linux OS Hardening
+# SecReq: 01 System Hardening
+# ------------------------------------------------------------------------
+
+# ========================================================================
+# Verification if playbook is started with '--check' option. If not throw
+# error and end play!
+- fail:
+    msg: "WARNING: Playbooks for compliance checks must be started with '--check' option!"
+  when: ansible_check_mode == false
+# ========================================================================
+
+# Req 1: Unused services and protocols must be deactivated.
+
+- block:
+    - name: req-001.1 check for modprobe file
+      stat:
+        path: '/etc/modprobe.d/t-sec.conf'
+      register: check_modp_status
+      failed_when: check_modp_status.stat.exists == false
+  rescue:
+    - debug:
+        msg: "WARNING: File modprobe.d to disable protocols not found!"
+
+- block:
+    - name: req-001.2 unload kernel modules for protocols
+      shell: "{{ modprobe_tool }} {{ item }}"
+      register: loaded_mods_protocols
+      failed_when: '"ERROR" not in loaded_mods_protocols.stderr'
+      changed_when: false
+      check_mode: no
+      with_items:
+        - "{{ disable_unused_protocols }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Kernel modules for not needed protocols are loaded!"
+
+- block:
+    - name: req-001.3 check modprobe file for unused protocols
+      lineinfile:
+        path: '/etc/modprobe.d/t-sec.conf'
+        line: "install {{ item }} /bin/true"
+        state: present
+      register: check_modp_protocols
+      failed_when: (check_modp_protocols is changed)
+      with_items: "{{ disable_unused_protocols }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Modprobe configuration is incorrect!"
+  when: check_modp_status.stat.exists == true
+
+- block:
+    - name: req-001.1 check for open tcp ports
+      shell: "{{ check_open_tcp }} 2>/dev/null | grep -i {{ grep_open_tcp }} | awk '{print $4}' | sed 's/.*://' | sort -nu"
+      register: open_tcp_ports
+      changed_when: false
+      check_mode: no
+    - set_fact:
+        check_tcp: '{{ open_tcp_ports.stdout_lines | difference(used_tcp_services) }}'
+    - set_fact: count_tcp=0
+    - set_fact: count_tcp={{ count_tcp | int + 1 }}
+      with_items: "{{ check_tcp }}"
+    - fail:
+        msg: "Found {{ count_tcp }} open TCP ports!"
+      when: count_tcp != "0"
+  rescue:
+     - debug:
+         msg: "WARNING: Found open TCP ports {{ check_tcp }} that are not defined in configuration!"
+
+- block:
+    - name: req-001.2 check for open UDP ports
+      shell: "{{ check_open_udp }} 2>/dev/null | grep -i {{ grep_open_udp }} | awk '{print $4}' | sed 's/.*://' | sort -nu"
+      register: open_udp_ports
+      changed_when: false
+      check_mode: no
+    - set_fact:
+        check_udp: '{{ open_udp_ports.stdout_lines | difference(used_udp_services) }}'
+    - set_fact: count_udp=0
+    - set_fact: count_udp={{ count_udp | int + 1 }}
+      with_items: "{{ check_udp }}"
+    - fail:
+        msg: "Found {{ count_udp }} open UDP ports!"
+      when: count_udp != "0"
+  rescue:
+     - debug:
+         msg: "WARNING: Found open UDP ports {{ check_udp }} that are not defined in configuration!"
+
+# ------------------
+# Service Protection
+# ------------------
+
+# Req 2: The reachability of services must be restricted.
+
+- block:
+    - name: req-002.0 check if iptables is installed
+      package:
+        name: 'iptables'
+        state: absent
+      register: check_iptables_2
+      failed_when: check_iptables_2.changed == false
+      changed_when: false
+  rescue:
+    - debug:
+        msg: "WARNING: IPtables is not installed!"
+
+# -----------------------------------
+# Service Protection - Local Firewall
+# -----------------------------------
+
+# Req 3: If iptables is used, a loopback traffic must be configured.
+
+- block:
+    - name: req-003.1 check for loopback traffic input rule
+      iptables:
+        chain: INPUT
+        in_interface: lo
+        jump: ACCEPT
+      register: check_iptables_3_1
+      failed_when: check_iptables_3_1.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: IPtables rule for loopback traffic input is missing!"
+  when: config_iptables == true and check_iptables_2.changed == true
+
+- block:
+    - name: req-003.2 check for loopback traffic output rule
+      iptables:
+        chain: OUTPUT
+        in_interface: lo
+        jump: ACCEPT
+      register: check_iptables_3_2
+      failed_when: check_iptables_3_2.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: IPtables rule for loopback traffic output is missing!"
+  when: config_iptables == true and check_iptables_2.changed == true
+
+- block:
+    - name: req-003.3 check for loopback traffic drop rule
+      iptables:
+        chain: INPUT
+        source: 127.0.0.0/8
+        jump: DROP
+      register: check_iptables_3_3
+      failed_when: check_iptables_3_3.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: IPtables rule for loopback traffic is missing!"
+  when: config_iptables == true and check_iptables_2.changed == true
+
+# Req 4: If iptables is used, outbound and established connections must
+# be configured.
+
+- block:
+    - name: req-004.1 check for outbound connections rules
+      iptables:
+        chain: OUTPUT
+        protocol: '{{ item }}'
+        match: state
+        ctstate: NEW,ESTABLISHED
+        jump: ACCEPT
+      with_items:
+        - 'tcp'
+        - 'udp'
+        - 'icmp'
+      register: check_iptables_4_1
+      failed_when: check_iptables_4_1.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: IPtables rules for outbound connections are missing!"
+  when: config_iptables == true and check_iptables_2.changed == true
+
+
+- block:
+    - name: req-004.1 check for inbound connections rules
+      iptables:
+        chain: INPUT
+        protocol: '{{ item }}'
+        match: state
+        ctstate: ESTABLISHED
+        jump: ACCEPT
+      with_items:
+        - 'tcp'
+        - 'udp'
+        - 'icmp'
+      register: check_iptables_4_2
+      failed_when: check_iptables_4_2.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: IPtables rules for inbound connections are missing!"
+  when: config_iptables == true and check_iptables_2.changed == true
+
+# Req 5: If iptables is used, rules must be existing for all ports in
+# listening state.
+
+- block:
+    - name: req-005.1 check rules for ssh
+      iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "{{ item }}"
+        match: state
+        ctstate: NEW
+        jump: ACCEPT
+      with_items: "{{ use_ssh_server_ports }}"
+      register: check_iptables_5_1
+      failed_when: check_iptables_5_1.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: IPtables rule for ssh is missing!"
+  when: config_iptables == true and check_iptables_2.changed == true
+
+- block:
+    - name: req-005.2 configure rules for udp
+      iptables:
+        chain: INPUT
+        protocol: udp
+        destination_port: "{{ item }}"
+        match: state
+        ctstate: NEW
+        jump: ACCEPT
+      with_items: "{{ set_fw_ports_udp }}"
+      register: check_iptables_5_2
+      failed_when: check_iptables_5_2.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: IPtables rules for udp services are missing!"
+  when: config_iptables == true and
+        ( set_fw_rules_udp == true and check_iptables_2.changed == true)
+
+- block:
+    - name: req-005.3 configure rules for tcp
+      iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "{{ item }}"
+        match: state
+        ctstate: NEW
+        jump: ACCEPT
+      with_items: "{{ set_fw_ports_tcp }}"
+      register: check_iptables_5_3
+      failed_when: check_iptables_5_3.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: IPtables rules for tcp services are missing!"
+  when: config_iptables == true and
+        ( set_fw_rules_tcp == true and check_iptables_2.changed == true)
+
+# Req 6: If iptables is used, a default policy must be configured to drop all
+# traffic.
+
+- block:
+    - name: req-006.0 check for default deny policies
+      iptables:
+        chain: '{{ item }}'
+        policy: DROP
+      with_items:
+        - 'INPUT'
+        - 'OUTPUT'
+        - 'FORWARD'
+      register: check_iptables_6
+      failed_when: check_iptables_6.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: IPtables default poloicies are missing!"
+  when: config_iptables == true and check_iptables_2.changed == true
+
+# ---------------
+# System Cleaning
+# ---------------
+
+# Req 7: Unused software must not be installed or must be uninstalled.
+
+- block:
+    - name: req-007.1 check if autofs is not installed
+      package:
+        name: 'autofs'
+        state: absent
+      register: check_autofs
+      failed_when: check_autofs.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: AutoFS is insalled!"
+
+- block:
+    - name: req-007.2 check if inetd is not installed
+      package:
+        name: '{{ item }}'
+        state: absent
+      with_items:
+        - 'openbsd-inetd'
+        - 'inetutils-inetd'
+      register: check_inetd
+      failed_when: check_inetd.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: Inetd is insalled!"
+
+- block:
+    - name: req-007.3 check if xinetd is not installed
+      package:
+        name: 'xinetd'
+        state: absent
+      register: check_xinetd
+      failed_when: check_xinetd.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: Xinetd is insalled!"
+
+- block:
+    - name: req-007.4 check if rsync is disabled
+      shell: awk -F'=' '{if ($1 == "RSYNC_ENABLE") print $2}' /etc/default/rsync
+      register: check_rsync_7_6
+      failed_when: check_rsync_7_6.stdout != "false"
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Rsync is enabled!"
+
+- block:
+    - name: req-007.5 check if unwanted sofware is installed
+      package:
+        name: '{{ item }}'
+        state: absent
+      with_items: '{{ disable_software }}'
+      register: check_software
+      failed_when: check_software.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: Not needed software  is installed!"
+
+- block:
+    - name: req-007.6 check if unwanted servers are not installed
+      package:
+        name: '{{ item }}'
+        state: absent
+      with_items: '{{ disable_unused_servers }}'
+      register: check_servers_7_5
+      failed_when: check_servers_7_5.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: Not needed servers are installed!"
+
+- block:
+    - name: req-007.7 check if unwanted clients are not installed
+      package:
+        name: '{{ item }}'
+        state: absent
+      with_items: '{{ disable_unused_clients }}'
+      register: check_clients_7_8
+      failed_when: check_clients_7_8.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: Not needed clients are installed!"
+
+# ------------------------
+# Filesystem Configuration
+# ------------------------
+
+# Req 8: Unused filesystems must be disabled.
+
+- block:
+    - name: req-008.1 check modprobe file for unused filesystems
+      lineinfile:
+        path: '/etc/modprobe.d/t-sec.conf'
+        line: "install {{ item }} /bin/true"
+        state: present
+      register: check_modp_fs
+      failed_when: (check_modp_fs is changed)
+      with_items: "{{ disable_unused_filesystems }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Modprobe configuration is incorrect!"
+  when: check_modp_status.stat.exists == true
+
+- block:
+    - name: req-008.2 unload kernel modules for filesystems
+      shell: "{{ modprobe_tool }} {{ item }}"
+      register: loaded_mods_fs
+      failed_when: '"ERROR" not in loaded_mods_fs.stderr'
+      changed_when: false
+      check_mode: no
+      with_items:
+        - "{{ disable_unused_filesystems }}"
+  rescue:
+    - debug:
+        msg: "WARNING: Kernel modules for not needed filesystems are loaded!"
+
+# Req 9: Dedicated partitions must be used for growing content that can
+# influence the availability of the system.
+
+- block:
+    - name: req-009.1 check if partition /tmp exists
+      lineinfile:
+        path: '/etc/fstab'
+        line: "/tmp "
+        state: present
+      register: check_tmp
+      failed_when: (check_tmp is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Partition /tmp is missing!"
+
+- block:
+    - name: req-009.2 check if partition /var exists
+      lineinfile:
+        path: '/etc/fstab'
+        line: "/var "
+        state: present
+      register: check_var
+      failed_when: (check_var is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Partition for /var is missing!"
+  when: config_partition_var_tmp == false or config_partition_var_log == false
+
+- block:
+    - name: req-009.3 check if partition /var/tmp exists
+      lineinfile:
+        path: '/etc/fstab'
+        line: "/var/tmp "
+        state: present
+      register: check_var_tmp
+      failed_when: (check_var_tmp is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Partition for /var/tmp is missing!"
+  when: config_partition_var == false
+
+- block:
+    - name: req-009.4 check if partition /var/log exists
+      lineinfile:
+        path: '/etc/fstab'
+        line: "/var/log "
+        state: present
+      register: check_var_log
+      failed_when: (check_var_log is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Partition for /var/log is missing!"
+  when: config_partition_var == false
+
+- block:
+    - name: req-009.5 check if partition /home exists
+      lineinfile:
+        path: '/etc/fstab'
+        line: "/home "
+        state: present
+      register: check_home
+      failed_when: (check_home is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Partition for /home is missing!"
+  when: config_partition_home == true
+
+# Req 10: Parameters nodev and nosuid must be set for partitions where this
+# is applicable.
+
+- block:
+    - name: req-010.1 check options for partition /tmp
+      lineinfile:
+        path: '/etc/fstab'
+        backrefs: yes
+        state: present
+        regexp: '(^UUID=[\w=/\-\.]+\s/tmp\s+.*\s+)defaults(.*)$'
+        line: '\1{{ use_partition_options }}\2'
+      register: check_tmp_options
+      failed_when: (check_tmp_options is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Options for partition /tmp are missing!"
+  when: check_tmp.changed == false
+
+- block:
+    - name: req-010.2 set options for partition /var
+      lineinfile:
+        path: '/etc/fstab'
+        backrefs: yes
+        state: present
+        regexp: '(^UUID=[\w=/\-\.]+\s/var\s+.*\s+)defaults(.*)$'
+        line: '\1{{ use_partition_options }}\2'
+      register: check_var_options
+      failed_when: (check_var_options is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Options for partition /var are missing!"
+  when: check_var.changed == false
+
+- block:
+    - name: req-010.3 set options for partition /var/tmp
+      lineinfile:
+        path: '/etc/fstab'
+        backrefs: yes
+        state: present
+        regexp: '(^UUID=[\w=/\-\.]+\s/var/tmp\s+.*\s+)defaults(.*)$'
+        line: '\1{{ use_partition_options }}\2'
+      register: check_var_tmp_options
+      failed_when: (check_var_tmp_options is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Options for partition /var/tmp are missing!"
+  when: check_var_tmp.changed == false
+
+- block:
+    - name: req-010.4 set options for partition /var/log
+      lineinfile:
+        path: '/etc/fstab'
+        backrefs: yes
+        state: present
+        regexp: '(^UUID=[\w=/\-\.]+\s/var/log\s+.*\s+)defaults(.*)$'
+        line: '\1{{ use_partition_options }}\2'
+      register: check_var_log_options
+      failed_when: (check_var_log_options is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Options for partition /var/log are missing!"
+  when: check_var_log.changed == false
+
+- block:
+    - name: req-010.5 set options for partition /home
+      lineinfile:
+        path: '/etc/fstab'
+        backrefs: yes
+        state: present
+        regexp: '(^UUID=[\w=/\-\.]+\s/home\s+.*\s+)defaults(.*)$'
+        line: '\1{{ use_partition_options }}\2'
+      register: check_home_options
+      failed_when: (check_home_options is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: Options for partition /var/log are missing!"
+  when: check_home.changed == false
+
+# -----------------
+# Process Hardening
+# -----------------
+
+# Req 11: Core dumps must be disabled.
+
+- block:
+    - name: req-011.1 create limits.d-directory
+      file:
+        path: '/etc/security/limits.d'
+        state: directory
+      register: check_limitsd
+      failed_when: check_limitsd.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: Coredumps are not correct configured!"
+
+- block:
+    - name: req-011.2 check for soft coredump restriction
+      shell: grep "^*[[:space:]]soft[[:space:]]core[[:space:]]0" /etc/security/limits.d/* 2>/dev/null
+      register: check_soft_core
+      failed_when: check_soft_core.stdout == ""
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Coredumps are not correct configured in limits.d!"
+  when: check_limitsd.changed == false
+
+- block:
+    - name: req-011.3 check for hard coredump restriction
+      shell: grep "^*[[:space:]]hard[[:space:]]core[[:space:]]0" /etc/security/limits.d/* 2>/dev/null
+      register: check_hard_core
+      failed_when: check_hard_core.stdout == ""
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Coredumps are not correct configured in limits.d!"
+  when: check_limitsd.changed == false
+
+- block:
+    - name: reg-011.4 check sysctl-settings for coredumps
+      lineinfile:
+        path: '/etc/sysctl.conf'
+        regexp: '^{{ item.key }}='
+        line: '{{ item.key }}={{ item.value }}'
+        state: present
+      register: check_core_sysctl
+      failed_when: (check_core_sysctl is changed)
+      with_dict: '{{ use_coredumps }}'
+  rescue:
+    - debug:
+        msg: "WARNING: Coredumps are not correct configured with sysctl!"
+
+# Req 12: Protection against buffer overflows must be enabled.
+
+- block:
+    - name: req-012.1 check if nx is enabled in bios
+      shell: dmesg | awk -F' ' '{if ($3 == "NX") print $7}'
+      register: check_nx
+      failed_when: check_nx.stdout != "active"
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: NX is disabled! Please enable in systems BIOS"
+
+- block:
+    - name: reg-012.2 check sysctl-settings for buffer overflow protection
+      lineinfile:
+        path: '/etc/sysctl.conf'
+        regexp: '^{{ item.key }}='
+        line: '{{ item.key }}={{ item.value }}'
+        state: present
+      register: check_bop_sysctl
+      failed_when: (check_bop_sysctl is changed)
+      with_dict: '{{ use_buffer_overflow_protection }}'
+  rescue:
+    - debug:
+        msg: "WARNING: Buffer overflow protection are not correct configured with sysctl!"
+
+# Req 13: Prelink must not be used.
+
+- block:
+    - name: req-013.0 check if prelink is installed
+      package:
+        name: 'prelink'
+        state: absent
+      register: check_prelink
+      failed_when: check_prelink.changed == true
+  rescue:
+    - debug:
+        msg: "WARNING: Prelink is installed!"
+
+# -----------------
+# Network Hardening
+# -----------------
+
+# Req 14: IPv4 protocol stack must securely configured.
+
+- block:
+    - name: reg-014.0 check sysctl-settings for ipv4
+      lineinfile:
+        path: '/etc/sysctl.conf'
+        regexp: '^{{ item.key }}='
+        line: '{{ item.key }}={{ item.value }}'
+        state: present
+      register: check_ipv4
+      failed_when: (check_ipv4 is changed)
+      with_dict: '{{ use_network_config_ipv4 }}'
+  rescue:
+    - debug:
+        msg: "WARNING: IPv4 settings are not correct configured with sysctl!"
+
+# Req 15: IPv6 protocol stack must securely configured.
+
+- block:
+    - name: reg-015.1 check sysctl-settings for ipv6 if disabled
+      lineinfile:
+        path: '/etc/sysctl.conf'
+        regexp: '^{{ item.key }}='
+        line: '{{ item.key }}={{ item.value }}'
+        state: present
+      register: check_ipv6_disabled
+      failed_when: (check_ipv6_disabled is changed)
+      with_dict: '{{ use_network_config_ipv6_disabled }}'
+  rescue:
+    - debug:
+        msg: "WARNING: IPv6 (disabled) settings are not correct configured with sysctl!"
+  when: config_ipv6_enable == false
+
+- block:
+    - name: reg-015.2 check sysctl-settings for ipv6 if enabled
+      lineinfile:
+        path: '/etc/sysctl.conf'
+        regexp: '^{{ item.key }}='
+        line: '{{ item.key }}={{ item.value }}'
+        state: present
+      register: check_ipv6_enabled
+      failed_when: (check_ipv6_enabled is changed)
+      with_dict: '{{ use_network_config_ipv6_enabled }}'
+  rescue:
+    - debug:
+        msg: "WARNING: IPv6 (enabled) settings are not correct configured with sysctl!"
+  when: config_ipv6_enable == true

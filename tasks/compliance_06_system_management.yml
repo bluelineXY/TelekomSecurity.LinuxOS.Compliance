@@ -1,0 +1,533 @@
+---
+# ------------------------------------------------------------------------
+# Task: Telekom Security Linux OS Compliance
+# SecReq: 06 System Management
+# ------------------------------------------------------------------------
+
+# ========================================================================
+# Verification if playbook is started with '--check' option. If not throw
+# error and end play!
+- fail:
+    msg: "WARNING: Playbooks for compliance checks must be started with '--check' option!"
+  when: ansible_check_mode == false
+# ========================================================================
+
+# Req 56: The management of the operating system must be done via a dedicated
+# management network which is independent from the production network.
+
+- block:
+    - name: req-056.1 check if management interface (ipv4) is enabled
+      fail:
+        msg: "Management interface for IPv4 is disabled."
+      when: config_mgmt_interface_ipv4 == false
+    - name: req-056.2 check if real IP address is set for mgmt
+      fail:
+        msg: "No IPv4 address is set for management interface."
+      when: config_mgmt_interface_ipv4 == true and
+            (use_mgmt_interface_ipv4 == "0.0.0.0" or use_mgmt_interface_ipv4 == "")
+  rescue:
+    - debug:
+        msg: "WARNING: IPv4 management interface is missing!"
+
+- block:
+    - name: req-056.3 check if management interface (ipv6) is enabled
+      fail:
+        msg: "Management interface for IPv6 is disabled."
+      when: config_mgmt_interface_ipv6 == false
+    - name: req-056.4 check if real IP address is set for mgmt
+      fail:
+        msg: "No IPv6 address is set for management interface."
+      when: config_mgmt_interface_ipv6 == true and
+            (use_mgmt_interface_ipv6 == "::" or use_mgmt_interface_ipv6 == "")
+  rescue:
+    - debug:
+        msg: "WARNING: IPv6 management interface is missing!"
+  when: config_ipv6_enable == true
+
+# Req 57: Management services must be bind to the management network.
+
+- block:
+    - name: req-057.1 check if sshd is bind on ipv4 of mgmt interface
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "{{ item }}"
+        state: present
+      register: check_ssh_mgmt_4
+      failed_when: (check_ssh_mgmt_4 is changed)
+      with_items:
+        - "ListenAddress {{use_mgmt_interface_ipv4}}"
+  rescue:
+    - debug:
+        msg: "WARNING: SSH is not bind to IPv4 address(es) of management interface!"
+
+- block:
+    - name: req-057.2 check if sshd is bind on ipv6 of mgmt interface
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "{{ item }}"
+        state: present
+      register: check_ssh_mgmt_6
+      failed_when: (check_ssh_mgmt_6 is changed)
+      with_items:
+        - "ListenAddress {{use_mgmt_interface_ipv6}}"
+  rescue:
+    - debug:
+        msg: "WARNING: SSH is not bind to IPv6 address(es) of management interface!"
+  when: config_ipv6_enable == true
+
+- block:
+    - name: req-057.3 check if ntp is bind on ipv4 of mgmt interface
+      lineinfile:
+        path: '/etc/ntp.conf'
+        line: "server {{ item }}"
+        state: present
+      register: check_ntp_mgmt_4
+      failed_when: (check_ntp_mgmt_4 is changed)
+      with_items:
+        - "interface listen {{use_mgmt_interface_ipv4}}"
+  rescue:
+    - debug:
+        msg: "WARNING: NTP is not bind to IPv4 address(es) of management interface!"
+  when: check_ntp.changed == true and ntp_status.stat.exists == true
+
+- block:
+    - name: req-057.4 check if ntp is bind on ipv6 of mgmt interface
+      lineinfile:
+        path: '/etc/ntp.conf'
+        line: "server {{ item }}"
+        state: present
+      register: check_ntp_mgmt_6
+      failed_when: (check_ntp_mgmt_6 is changed)
+      with_items:
+        - "interface listen {{use_mgmt_interface_ipv6}}"
+  rescue:
+    - debug:
+        msg: "WARNING: NTP is not bind to IPv6 address(es) of management interface!"
+  when: check_ntp.changed == true and
+       (ntp_status.stat.exists == true and config_ipv6_enable == true)
+
+# ---
+# SSH
+# ---
+
+# Req 59: SSH moduli smaller than 2048 must not be used.
+
+- block:
+    - name: req-068.0 check if /etc/ssh/moduli are correct
+      shell: awk '$5 < {{ use_moduli_minimum }}' /etc/ssh/moduli | wc -l
+      register: check_ssh_moduli
+      failed_when: check_ssh_moduli.stdout != "0"
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: SSH moduli found smaller than {{ use_moduli_minimum }}!"
+
+# Req 60: Only approved ciphers & key exchange algorithms must be used.
+
+- block:
+    - name: req-060.1 check ssh ciphers
+      shell: cat /etc/ssh/sshd_config | grep {{ item }} | wc -l
+      register: check_ssh_chiphers
+      failed_when: check_ssh_chiphers.stdout == "0"
+      changed_when: false
+      check_mode: no
+      with_items: "{{ use_ssh_ciphers }}"
+  rescue:
+    - debug:
+        msg: "WARNING: SSH crypto ciphers configuration is incorrect!"
+
+- block:
+    - name: req-060.2 check ssh key exchange
+      shell: cat /etc/ssh/sshd_config | grep {{ item }} | wc -l
+      register: check_ssh_kex
+      failed_when: check_ssh_kex.stdout == "0"
+      changed_when: false
+      check_mode: no
+      with_items: " {{ use_ssh_key_ex }}"
+  rescue:
+    - debug:
+        msg: "WARNING: SSH crypto key exchange configuration is incorrect!"
+
+# Req 61: Only approved MAC algorithms must be used.
+
+- block:
+    - name: req-061.0 check ssh mac algorithms
+      shell: cat /etc/ssh/sshd_config | grep {{ item }} | wc -l
+      register: check_ssh_macs
+      failed_when: check_ssh_macs.stdout == "0"
+      changed_when: false
+      check_mode: no
+      with_items: "{{ use_ssh_macs }}"
+  rescue:
+    - debug:
+        msg: "WARNING: SSH mac algorithms configuration is incorrect!"
+
+# Req 62: SSH logging must be enabled.
+
+- block:
+    - name: req-062.0 check ssh logging
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "{{ item }}"
+        state: present
+      register: check_ssh_log
+      failed_when: (check_ssh_log is changed)
+      with_items:
+        - "SyslogFacility {{use_ssh_syslogfacility}}"
+        - "LogLevel {{use_ssh_loglevel}}"
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for logging is not correct!"
+
+# Req 63: SSH LoginGraceTime must be set to one minute or less.
+
+- block:
+    - name: req-063.0 check ssh logingracetime configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "LoginGraceTime {{use_login_grace_time}}"
+        state: present
+      register: check_ssh_lgt
+      failed_when: (check_ssh_lgt is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for LoginGraceTime is not correct!"
+
+# Req 64: SSH MaxAuthTries must be set to 5 or less.
+
+- block:
+    - name: req-064.0 check ssh maxauthtries configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "{{ item }}"
+        state: present
+      register: check_ssh_mat
+      failed_when: (check_ssh_mat is changed)
+      with_items:
+        - "MaxAuthTries {{use_max_auth_tries}}"
+        - "MaxSessions {{use_max_sessions}}"
+        - "MaxStartups {{use_max_startups}}"
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for MaxAuthTries is not correct!"
+
+# Req 65: SSH root login must be disabled.
+
+- block:
+    - name: req-065.0 check root login for is disabled
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "PermitRootLogin {{ 'without-password' if (use_allow_root_login|bool) else 'no' }}"
+        state: present
+      register: check_ssh_root_login
+      failed_when: (check_ssh_root_login is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for root login is not correct!"
+
+# Req 66: SSH strict mode must be enabled.
+
+- block:
+    - name: req-066.0 check ssh configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "StrictModes {{ 'yes' if (use_strict_mode|bool) else 'no' }}"
+        state: present
+      register: check_ssh_strict
+      failed_when: (check_ssh_strict is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for strict mode is not correct!"
+
+# Req 67: SSH user authentication must be done with public keys.
+
+- block:
+    - name: req-067.0 check ssh user authentication
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "PubkeyAuthentication {{ 'yes' if (use_pubkey_auth|bool) else 'no' }}"
+        state: present
+      register: check_ssh_user_auth
+      failed_when: (check_ssh_user_auth is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for user authentication is not correct!"
+
+# Req 68: SSH password authentication must be disabled.
+
+- block:
+    - name: req-068.0 check ssh if password authentication is disabled
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "PubkeyAuthentication {{ 'yes' if (use_pubkey_auth|bool) else 'no' }}"
+        state: present
+      register: check_ssh_password_auth
+      failed_when: (check_ssh_password_auth is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for root login is not correct!"
+
+# Req 69: SSH IgnoreRhosts must be enabled.
+
+- block:
+    - name: req-069.0 check ssh ignorerhosts configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "IgnoreRhosts {{ 'yes' if (use_ignore_rhosts|bool) else 'no' }}"
+        state: present
+      register: check_ssh_ignore_hosts
+      failed_when: (check_ssh_ignore_hosts is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for IgnoreRhosts is not correct!"
+
+# Req 70: SSH HostbasedAuthentication must be disabled.
+
+- block:
+    - name: req-070.0 check ssh host based authentication configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "{{ item }}"
+        state: present
+      register: check_ssh_hba
+      failed_when: (check_ssh_hba is changed)
+      with_items:
+        - "HostbasedAuthentication {{ 'yes' if (use_host_based_auth|bool) else 'no' }}"
+        - "IgnoreUserKnownHosts {{ 'yes' if (use_ignore_known_hosts|bool) else 'no' }}"
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for HostbasedAuthentication is not correct!"
+
+# Req 71: The usage of the SSH service must be restricted to dedicated
+# groups or users.
+
+- block:
+    - name: req-071.1 check ssh configuration for pam use
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "UsePAM {{ 'yes' if (use_pam_for_ssh|bool) else 'no' }}"
+        state: present
+      register: check_ssh_pam
+      failed_when: (check_ssh_pam is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for ssh pam use is not correct!"
+
+- block:
+    - name: req-071.2 check ssh configuration for deny users
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "DenyUsers {{ssh_deny_users}}"
+        state: present
+      register: check_ssh_deny_users
+      failed_when: (check_ssh_deny_users is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for deny users is not correct!"
+  when: ssh_deny_users != ""
+
+- block:
+    - name: req-071.3 check ssh configuration for allow user
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "AllowUsers {{ssh_allow_users}}"
+        state: present
+      register: check_ssh_allow_users
+      failed_when: (check_ssh_allow_users is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for allow users is not correct!"
+  when: ssh_allow_users != ""
+
+- block:
+    - name: req-071.4 check ssh configuration for deny groups
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "DenyGroups {{ssh_deny_groups}}"
+        state: present
+      register: check_ssh_deny_groups
+      failed_when: (check_ssh_deny_groups is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for deny groups is not correct!"
+  when: ssh_deny_groups != ""
+
+- block:
+    - name: req-071.5 check ssh configuration for allow groups
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "AllowGroups {{ssh_allow_groups}}"
+        state: present
+      register: check_ssh_allow_groups
+      failed_when: (check_ssh_allow_groups is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for allow groups is not correct!"
+  when: ssh_allow_groups != ""
+
+# Req 72: The SSH Idle Timeout Interval must be configured to an adequate
+# time.
+
+- block:
+    - name: req-072.0 check ssh idle timeout configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "{{ item }}"
+        state: present
+      register: check_ssh_idle
+      failed_when: (check_ssh_idle is changed)
+      with_items:
+        - "TCPKeepAlive {{ 'yes' if (use_tcp_keepalive|bool) else 'no' }}"
+        - "ClientAliveInterval {{use_client_alive_interval}}"
+        - "ClientAliveCountMax {{use_client_alive_count}}"
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for Idle Timeout is not correct!"
+
+# Req 73: SSH tunnel devices must not be used.
+
+- block:
+    - name: req-073.0 check ssh tunnel devices configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "PermitTunnel {{ 'yes' if (use_permit_tunnel|bool) else 'no' }}"
+        state: present
+      register: check_ssh_tunnel
+      failed_when: (check_ssh_tunnel is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for tunnel devices is not correct!"
+
+# Req 74: SSH TCP port forwarding must be disabled.
+
+- block:
+    - name: req-074.0 check ssh tcp port forwarding configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "AllowTcpForwarding {{ 'yes' if (use_allow_tcp_forwarding|bool) else 'no' }}"
+        state: present
+      register: check_tcp_forward
+      failed_when: (check_tcp_forward is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for TCP port forwarding  is not correct!"
+
+# Req 75: SSH agent forwarding must be disabled.
+
+- block:
+    - name: req-075.0 check ssh agent forwarding configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "AllowAgentForwarding {{ 'yes' if (use_allow_agent_forwarding|bool) else 'no' }}"
+        state: present
+      register: check_ssh_agent_forward
+      failed_when: (check_ssh_agent_forward is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for agent forwarding  is not correct!"
+
+# Req 76: SSH gateway ports must be disabled.
+
+- block:
+    - name: req-076.0 check ssh gateway ports configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "GatewayPorts {{ 'yes' if (use_gw_ports|bool) else 'no' }}"
+        state: present
+      register: check_ssh_gw_ports
+      failed_when: (check_ssh_gw_ports is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for gateway ports is not correct!"
+
+# Req 77: SSH X11 forwarding must be disabled.
+
+- block:
+    - name: req-077.0 check ssh x11 forwarding configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "X11Forwarding {{ 'yes' if (use_x11_forwarding|bool) else 'no' }}"
+        state: present
+      register: check_ssh_x11
+      failed_when: (check_ssh_x11 is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for X11 forwarding is not correct!"
+
+# Req 78: SSH PermitUserEnvironment must be disabled.
+
+- block:
+    - name: req-078.0 check ssh permit user enviroment configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "PermitUserEnvironment {{ 'yes' if (use_permit_user_env|bool) else 'no' }}"
+        state: present
+      register: check_ssh_user_env
+      failed_when: (check_ssh_user_env is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for PermitUserEnvironment is not correct!"
+
+# Req 79: SSH login banner and motd must be disabled.
+
+- block:
+    - name: req-079.0 check ssh banner configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "{{ item }}"
+        state: present
+      register: check_ssh_banner
+      failed_when: (check_ssh_banner is changed)
+      with_items:
+        - "PrintMotd {{ 'yes' if (use_ssh_banner|bool) else 'no' }}"
+        - "Banner {{ '/etc/issue.net' if (use_ssh_motd|bool) else 'none' }}"
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for banner/motd is not correct!"
+
+# Req 80: If SFTP is activated, internal server of OpenSSH must be used.
+
+- block:
+    - name: req-080.1 check sftp configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "Subsystem sftp internal-sftp -l {{ use_sftp_logging }}"
+        state: present
+      register: check_sftp
+      failed_when: (check_sftp is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH configuration for sftp is not correct!"
+  when: set_sftp_enabled == true
+
+- block:
+    - name: req-80.2 check sftp configuration
+      lineinfile:
+        path: '/etc/ssh/sshd_config'
+        line: "{{ item }}"
+        state: present
+      register: check_sftp_chroot
+      failed_when: (check_sftp_chroot is changed)
+      with_items:
+        - "AllowTcpForwarding {{ 'yes' if (use_sftp_tcp_forwarding|bool) else 'no' }}"
+        - "AllowAgentForwarding {{ 'yes' if (use_sftp_agent_forwarding|bool) else 'no' }}"
+        - "PasswordAuthentication {{ 'yes' if (use_sftp_password_auth|bool) else 'no' }}"
+        - "PermitRootLogin {{ 'yes' if (use_sftp_root_login|bool) else 'no' }}"
+        - "X11Forwarding {{ 'yes' if (use_sftp_x11_forwardning|bool) else 'no' }}"
+  rescue:
+    - debug:
+        msg: "WARNING: SSH chroot configuration for sftp is not correct!"
+  when: set_sftp_chroot == true
+
+- block:
+    - name: req-090.3 check for sftp group
+      group:
+        name: "{{ use_sftp_group }}"
+        state: present
+      register: check_sftp_group
+      failed_when: (check_sftp_group is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SSH group {{ use_sftp_group }} is missing!"
+  when: set_sftp_chroot == true
