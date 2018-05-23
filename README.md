@@ -8,7 +8,7 @@ Author : [Markus Schumburg](mailto://security.automation@telekom.de)
 
 Version: 0.9
 
-Date   : 14. May 2018
+Date   : 24. May 2018
 
 -------------------------------------------------------------------------------
 
@@ -39,6 +39,8 @@ The role is tested with the following Linux versions:
 
    * Ubuntu 14.04 LTS
    * Ubuntu 16.04 LTS
+   * RedHat Enterprise Linux 7.x
+   * CentOS 7.x
 
 -------------------------------------------------------------------------------
 
@@ -230,9 +232,6 @@ an error.
 Telekom Security - Security Requirements:
 * SecReq 3.xx: Linux OS for Servers
 
-Source:
-* external: n.a
-* internal: [PSA-Portal](https://psa-portal.telekom.de)
 
 ## License
 
