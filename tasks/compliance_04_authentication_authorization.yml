@@ -252,7 +252,7 @@
 # Req 33: All groups in /etc/passwd must exist in /etc/group (default).
 
 - name: read users from /etc/passwd
-  shell: awk -F':' '{if ($1 != "sync" && $7 != "{{ use_nologin_path }}" && $7 != "/bin/false") print $1}' /etc/passwd
+  shell: awk -F':' '{if ($1 != "sync" && $1 != "shutdown" && $1 != "halt" && $7 != "{{ use_nologin_path }}" && $7 != "/bin/false") print $1}' /etc/passwd
   register: read_users
   changed_when: false
   check_mode: no
@@ -580,10 +580,10 @@
 - block:
     - name: req-043.0 check if mac solution is installed
       package:
-        name: '{{ use_mac_type }}'
+        name: '{{ use_mac_package }}'
         state: absent
       register: check_mac
-      failed_when: check_mac.changed == false
+      failed_when: check_mac.changed == true
       changed_when: false
   rescue:
     - debug:
@@ -591,35 +591,6 @@
 
 # Req 44: If SELinux or AppArmor is used, it must not be disabled in
 # bootloader configuration.
-
-# SELinux
-#- block:
-#    - name: req-044.1 enable selinux in grub
-#      lineinfile:
-#        dest: '/etc/default/grub'
-#        regexp: '^GRUB_CMDLINE_LINUX_DEFAULT=(.*)'
-#        line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet"'
-#      register: check_sel_grub_1
-#      failed_when: (check_sel_grub_1 is changed)
-#  rescue:
-#    - debug:
-#        msg: "WARNING: SELinux is not enabled in grub!"
-#  when: config_mac == true and
-#     ( use_mac_type == "selinux" and config_bootloader_grub == true )
-
-#- block:
-#    - name: req-044.2 enable selinux in grub
-#      lineinfile:
-#        dest: '/etc/default/grub'
-#        regexp: '^GRUB_CMDLINE_LINUX=(.*)'
-#        line: 'GRUB_CMDLINE_LINUX=""'
-#      register: check_sel_grub_2
-#      failed_when: (check_sel_grub_2 is changed)
-#  rescue:
-#    - debug:
-#        msg: "WARNING: SELinux is not enabled in grub!"
-#  when: config_mac == true and
-#     ( use_mac_type == "selinux" and config_bootloader_grub == true )
 
 # AppArmor
 - block:
@@ -650,34 +621,88 @@
   when: use_mac_type == "apparmor" and
         ( config_mac == true and check_mac.changed == true )
 
+# SELinux
+- block:
+    - name: req-044.1 enable selinux in grub
+      lineinfile:
+        dest: '/etc/default/grub'
+        regexp: '^GRUB_CMDLINE_LINUX_DEFAULT=(.*)'
+        line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet"'
+      register: check_sel_grub_1
+      failed_when: (check_sel_grub_1 is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SELinux is not enabled in grub!"
+  when: use_mac_type == "selinux" and
+        ( config_mac == true and check_mac.changed == true )
+
+- block:
+    - name: req-044.2 enable selinux in grub
+      lineinfile:
+        dest: '/etc/default/grub'
+        regexp: '^GRUB_CMDLINE_LINUX=(.*)'
+        line: 'GRUB_CMDLINE_LINUX=""'
+      register: check_sel_grub_2
+      failed_when: (check_sel_grub_2 is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SELinux is not enabled in grub!"
+  when: use_mac_type == "selinux" and
+        ( config_mac == true and check_mac.changed == true )
+
 # Req 45: If SELinux is used, its state must be enforced.
 
-#- name: req-045.0 enforce selinux state
-#  lineinfile:
-#    dest: '/etc/selinux/config'
-#    regexp: '^SELINUX=(.*)'
-#    line: 'SELINUX=enforcing'
-#  when: config_mac == true and use_mac_type == "selinux"
+- block:
+    - name: req-045.0 enforce selinux state
+      lineinfile:
+        dest: '/etc/selinux/config'
+        regexp: '^SELINUX=(.*)'
+        line: 'SELINUX=enforcing'
+      register: check_sel_enforcing
+      failed_when: (check_sel_enforcing is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: SELinux is not in enforce state!"
+  when: use_mac_type == "selinux" and
+        ( config_mac == true and check_mac.changed == true )
 
 # Req 46: If SELinux is used, the policy must be configured.
 
-#- name: req-046.0 configure selinux policy
-#  lineinfile:
-#    dest: '/etc/selinux/config'
-#    regexp: '^SELINUXTYPE=(.*)'
-#    line: 'SELINUXTYPE={{ selinux_type }}'
-#  when: config_mac == true and use_mac_type == "selinux"
+- block:
+    - name: req-046.0 configure selinux policy
+      lineinfile:
+        dest: '/etc/selinux/config'
+        regexp: '^SELINUXTYPE=(.*)'
+        line: 'SELINUXTYPE={{ selinux_type }}'
+        register: check_sel_policy
+        failed_when: (check_sel_policy is changed)
+    - debug:
+        msg: "WARNING: SELinux policy is not configured!"
+  when: use_mac_type == "selinux" and
+      ( config_mac == true and check_mac.changed == true )
 
-# ---<tbd>---------------------------------------------------------
 # Req 47: If SELinux is used, SETroubleshoot and MCS Translation Service must
 # not be installed.
-# Req 48: If SELinux is used, no unconfined daemons must exist.
-# -----------------------------------------------------------------
-
-# Req 49: If AppArmor is used, all profiles must be enforced.
 
 - block:
-    - name: req-049.1 check if apparmor-utils are installed
+    - name: req-047.0 check if not needed selinux tools are installed
+      package:
+        name: '{{ item }}'
+        state: absent
+      register: check_sel_tools
+      failed_when: (check_sel_tools is changed)
+      changed_when: false
+      with_items: "{{ disable_sel_tools }}"
+  rescue:
+    - debug:
+        msg: "WARNING: SETroubleshooter and/or MCS Translation Service are installed!"
+  when: (use_mac_type == "selinux" and ansible_os_family == "RedHat" ) and
+        ( config_mac == true and check_mac.changed == true )
+
+# Req 48: If AppArmor is used, all profiles must be enforced.
+
+- block:
+    - name: req-048.1 check if apparmor-utils are installed
       package:
         name: 'apparmor-utils'
         state: present
@@ -700,12 +725,12 @@
 # Authentication Parameter Password
 # ---------------------------------
 
-# Req 50: If a password is used as an authentication attribute, it must have
+# Req 49: If a password is used as an authentication attribute, it must have
 # at least 8 characters and contain three of the following categories:
 # upper cases, lower case, numbers and special characters.
 
 - block:
-    - name: req-050.1 check if libpam-cracklib is not installed
+    - name: req-049.1 check if libpam-cracklib is not installed
       package:
         name: 'libpam-cracklib'
         state: absent
@@ -714,11 +739,12 @@
   rescue:
     - debug:
         msg: " WARNING: Outdated libpam-cracklib is installed!"
+  when: config_password_rules == true and ansible_os_family == "Debian"
 
 - block:
-    - name: req-050.2 check if libpam-pwquality is installed
+    - name: req-049.2 check if libpam-pwquality is installed
       package:
-        name: "libpam-pwquality"
+        name: '{{ use_pam_pwquality }}'
         state: present
       register: check_pwquality
       failed_when: (check_pwquality is changed)
@@ -727,7 +753,7 @@
         msg: " WARNING: Needed libpam-pwquality is not installed!"
 
 - block:
-    - name: req-050.3 check password complexity
+    - name: req-049.3 check password complexity
       lineinfile:
         dest: '/etc/pam.d/common-password'
         state: present
@@ -738,10 +764,10 @@
   rescue:
     - debug:
         msg: " WARNING: Password complexity rules are not configured!"
-  when: check_pwquality.changed == false
+  when: check_pwquality.changed == false and ansible_distribution == "ubuntu"
 
 - block:
-    - name: req-050.4 check if password length and encryption is correct
+    - name: req-049.4 check if password length and encryption is correct
       lineinfile:
         dest: '/etc/pam.d/common-password'
         state: present
@@ -752,13 +778,14 @@
   rescue:
     - debug:
         msg: " WARNING: Password length and encryption is not correct!"
+  when: check_pwquality.changed == false and ansible_distribution == "ubuntu"
 
-# Req 51: If a password is used as an authentication attribute, a protection
+# Req 50: If a password is used as an authentication attribute, a protection
 # against brute force and dictionary attacks that hinder password guessing
 # must be implemented.
 
 - block:
-    - name: req-051.0 check brute-force protection
+    - name: req-050.0 check brute-force protection
       lineinfile:
         dest: '/etc/pam.d/common-auth'
         state: present
@@ -769,3 +796,4 @@
   rescue:
     - debug:
         msg: " WARNING: Brute-force protection is not correct configured!"
+  when: ansible_distribution == "ubuntu"

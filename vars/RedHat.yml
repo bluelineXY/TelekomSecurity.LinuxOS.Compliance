@@ -7,24 +7,27 @@
 # Don't change this file. Variables to change by the user are located
 # in file '/default/main.yml'!
 
+# Do not change groups wheel and sshd! Add only additional groups if
+# needed. Otherwise, you can't login afterwards!
+use_group_sudo: "wheel"
+use_group_ssh: "sshd"
+
+# Tool for updating grub after configuration change.
+grub_update_tool: "grub2-mkconfig -o /boot/grub2/grub.cfg"
+
 # -------------------
 # 01 System Hardening
 # -------------------
 
 # Req 1: Unused services and protocols must be deactivated.
-check_open_tcp: 'ss -ntlp'
-grep_open_tcp: 'LISTEN'
-check_open_udp: 'ss -nulp'
-grep_open_udp: 'UNCONN'
-
-
-# Req 1: Unused services and protocols must be deactivated.
 # Req 8: Unused filesystems must be disabled.
 modprobe_package: 'module-init-tools'
-modprobe_tool: 'rmmod'
 
 # Req 2: The reachability of services must be restricted.
 iptables_tools: 'iptables-services'
+
+# Req 7: Unused software must not be installed or must be uninstalled.
+use_rsync_deamon: 'rsyncd'
 
 # ---------------------------------
 # 04 Authentication & Authorization
@@ -86,7 +89,7 @@ groupm_group: "root"
 groupm_mode: "0644"
 
 # File: /boot/grupb2/grub.cfg
-grub_file: "/boot/grupb2/grub.cfg"
+grub_file: "/boot/grub2/grub.cfg"
 grub_owner: "root"
 grub_group: "root"
 grub_mode: "0600"
@@ -108,7 +111,23 @@ sshd_conf_mode: "og-rwx"
 
 # Req 43: If a system has Internet facing services or is a
 # virtualization host, a MAC solution must be used.
-use_mac_type: 'apparmor'
+use_mac_type: "selinux"
+use_mac_package: "libselinux"
+
+# Req 46: If SELinux is used, the policy must be configured.
+use_selinux_type: "targeted"
+
+# Req 49: If a password is used as an authentication attribute, it must have
+# at least 8 characters and contain three of the following categories:
+# upper cases, lower case, numbers and special characters.
+use_pam_pwquality: "libpwquality"
+
+# Req 51: Security relevant events must be logged with a precise timestamp
+# and a unique system reference.
+use_audit_deamon: "audit"
+
+# Req 54: System time must be synchronized against a reference time source.
+use_ntp_deamon: "ntpd"
 
 # --------------------
 # 06 System Management

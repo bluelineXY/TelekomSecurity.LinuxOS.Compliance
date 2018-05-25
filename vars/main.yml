@@ -19,7 +19,7 @@
 config_disable_protocols: true
 disable_unused_protocols:
   - "dccp"
-  - "scp"
+  - "sctp"
   - "rds"
   - "tipc"
 
@@ -439,34 +439,39 @@ config_ssh_file_permissions: true
 # Default: Ubuntu - AppArmor; RHEL - SELinux
 #
 # IMPORTANT:
-# If you enable mac use only default profiles will enabled. Please check
+# If you enable mac only default profiles will enabled. Please check
 # if additional profiles are needed.
 # ------------------------------------------------------------------------
 config_mac: true
 
 # Req 44: If SELinux or AppArmor is used, it must not be disabled in bootloader
 # configuration.
+config_mac_grub: true
 
 # Req 45: If SELinux is used, its state must be enforced.
+config_sel_enforced: true
 
 # Req 46: If SELinux is used, the policy must be configured.
+config_sel_policy: true
 
 # Req 47: If SELinux is used, SETroubleshoot and MCS Translation Service must
 # not be installed.
+config_disable_sel_tools: true
+disable_sel_tools:
+  - "setroubleshoot"
+  - "mcstrans"
 
-# Req 48: If SELinux is used, no unconfined daemons must exist.
+# Req 48: If AppArmor is used, all profiles must be enforced.
+config_aa_enforced: true
 
-# Req 49: If AppArmor is used, all profiles must be enforced.
-config_apparmor_profiles: true
-
-# Req 50: If a password is used as an authentication attribute, it must have
+# Req 49: If a password is used as an authentication attribute, it must have
 # at least 8 characters and contain three of the following categories:
 # upper cases, lower case, numbers and special characters.
 config_password_rules: true
 set_min_length: 9   # 9 means length of 8! Check man for pam_pwquality.so
 set_min_class: 3
 
-# Req 51: If a password is used as an authentication attribute, a protection
+# Req 50: If a password is used as an authentication attribute, a protection
 # against brute force and dictionary attacks that hinder password guessing
 # must be implemented.
 config_bf_protection: true
@@ -478,7 +483,7 @@ set_unlock_time: 5
 # 05 Logging
 # ----------
 
-# Req 52: Security relevant events must be logged with a precise timestamp and
+# Req 51: Security relevant events must be logged with a precise timestamp and
 # a unique system reference.
 # Enable or disable the use of auditd. This is needed for the logging of
 # all following events!
@@ -568,7 +573,7 @@ set_apparmor_events:
 # log use of privileged commands
 set_priv_command_logging: true
 
-# Req 53: Log rotate for logfiles must be configured.
+# Req 52: Log rotate for logfiles must be configured.
 # Define maximal size (MB) for auditd log files.
 config_log_rotate: true
 set_max_log_file_size: 10
@@ -584,11 +589,11 @@ use_rotate_maxsize: "200M"
 # Maximal age of log files. Files older will be deleted.
 use_rotate_maxage: 60
 
-# Req 54: Security relevant logging data must be send to an external system
+# Req 53: Security relevant logging data must be send to an external system
 # direct after their creation.
 # Variables for logging System must be set in '/defaults/main.yml'.
 
-# Req 55: System time must be synchronized against a reference time source.
+# Req 54: System time must be synchronized against a reference time source.
 # Variables for NTP must be set in '/defaults/main.yml'.
 # Enable NTP server on system by changing this variable to true.
 set_ntp_server_enable: false
@@ -597,7 +602,7 @@ set_ntp_server_enable: false
 # 06 System Management
 #---------------------
 
-# Req 56: The administration of the operating system must be done via a
+# Req 55: The administration of the operating system must be done via a
 # dedicated management network which is independent from the production
 # network.
 # Variables for mgmt. network must be set in '/defaults/main.yml'.
@@ -615,10 +620,10 @@ use_ssh_server_ports:
   - 22
   # -  you can define more if needed.
 
-# Req 59: SSH moduli smaller than 2048 must not be used.
+# Req 58: SSH moduli smaller than 2048 must not be used.
 use_moduli_minimum: 2048
 
-# Req 60: Only approved ciphers & key exchange algorithms must be used.
+# Req 59: Only approved ciphers & key exchange algorithms must be used.
 use_ssh_key_ex:
   - curve25519-sha256@libssh.org
   - diffie-hellman-group-exchange-sha256
@@ -631,7 +636,7 @@ use_ssh_ciphers:
   - aes192-ctr
   - aes128-ctr
 
-# Req 61: Only approved MAC algorithms must be used.
+# Req 60: Only approved MAC algorithms must be used.
 use_ssh_macs:
   - hmac-sha2-512-etm@openssh.com
   - hmac-sha2-256-etm@openssh.com
@@ -645,7 +650,7 @@ use_ssh_macs:
 # use_ssh_version: 2
 # Obsolet with OpenSSH version 7.4
 
-# Req 62: SSH logging must at least set to VERBOSE.
+# Req 61: SSH logging must at least set to VERBOSE.
 # Set logging for sshd. Choose:
 # FATAL - very serious events
 # ERROR - serious events
@@ -654,45 +659,45 @@ use_ssh_macs:
 use_ssh_syslogfacility: "AUTH"
 use_ssh_loglevel: "VERBOSE"
 
-# Req 63: SSH LoginGraceTime must be set to one minute or less.
+# Req 62: SSH LoginGraceTime must be set to one minute or less.
 use_login_grace_time: 120
 
-# Req 64: SSH MaxAuthTries must be set to 5 or less.
+# Req 63: SSH MaxAuthTries must be set to 5 or less.
 use_max_auth_tries: 5
 use_max_sessions: 10
 use_max_startups: "10:30:100"
 
-# Req 65: SSH root login must be disabled.
+# Req 64: SSH root login must be disabled.
 use_allow_root_login: false
 
-# Req 66: SSH strict mode must be enabled.
+# Req 65: SSH strict mode must be enabled.
 use_strict_mode: true
 
-# Req 67: SSH user authentication must be done with public keys.
+# Req 66: SSH user authentication must be done with public keys.
 use_pubkey_auth: true
 
-# Req 68: SSH password authentication must be disabled.
+# Req 67: SSH password authentication must be disabled.
 use_password_auth: false
 use_permit_empty_pw: false
 use_challenge_response: false
 
-# Req 69: SSH IgnoreRhosts must be enabled.
+# Req 68: SSH IgnoreRhosts must be enabled.
 use_ignore_rhosts: true
 
-# Req 70: SSH HostbasedAuthentication must be disabled.
+# Req 69: SSH HostbasedAuthentication must be disabled.
 use_host_based_auth: false
 use_ignore_known_hosts: true
 
-# Req 71: The usage of the SSH service must be restricted to dedicated
+# Req 70: The usage of the SSH service must be restricted to dedicated
 # groups or users.
 # PAM must be disabled to use SSH config to ristrict users and groups.
 use_pam_for_ssh: false
 ssh_deny_users: ''
 ssh_allow_users: ''
 ssh_deny_groups: ''
-ssh_allow_groups: 'ssh'
+ssh_allow_groups: ''
 
-# Req 72: The SSH Idle Timeout Interval must be configured to an adequate
+# Req 71: The SSH Idle Timeout Interval must be configured to an adequate
 # time.
 use_tcp_keepalive: false
 # Client alive time in seconds.
@@ -700,29 +705,25 @@ use_client_alive_interval: 300
 # Client active count.
 use_client_alive_count: 0
 
-# Req 73: SSH tunnel devices must not be used.
+# Req 72: SSH tunnel devices must not be used.
 use_permit_tunnel: false
 
-# Req 74: SSH TCP port forwarding must be disabled.
+# Req 73: SSH TCP port forwarding must be disabled.
 use_allow_tcp_forwarding: false
 
-# Req 75: SSH agent forwarding must be disabled.
+# Req 74: SSH agent forwarding must be disabled.
 use_allow_agent_forwarding: false
 
-# Req 76: SSH gateway ports must be disabled.
+# Req 75: SSH gateway ports must be disabled.
 use_gw_ports: false
 
-# Req 77: SSH X11 forwarding must be disabled.
+# Req 76: SSH X11 forwarding must be disabled.
 use_x11_forwarding: false
 
-# Req 78: SSH PermitUserEnvironment must be disabled.
+# Req 77: SSH PermitUserEnvironment must be disabled.
 use_permit_user_env: false
 
-# Req 79: SSH login banner and motd must be disabled.
-use_ssh_banner: false
-use_ssh_motd: false
-
-# Req 80: If SFTP is activated, internal SFTP server of OpenSSH must
+# Req 78: If SFTP is activated, internal SFTP server of OpenSSH must
 # be used.
 set_sftp_enabled: true
 set_sftp_chroot: false

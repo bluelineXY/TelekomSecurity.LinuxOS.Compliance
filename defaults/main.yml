@@ -30,11 +30,6 @@ use_user_name: ""
 use_password: ""
 # Set path to public-key file (e.g. id_rsa.pub) for new user!
 use_key_file_new: ""
-# Do not change groups sudo and ssh! Add only additional groups if
-# needed. Otherwise, you can't login afterwards!
-use_groups:
-  - "sudo"
-  - "ssh"
 
 # Set variable to false if grub bootloader is not used (e.g. for virtual
 # machines)
@@ -98,7 +93,7 @@ use_syslog_type: "rsyslog"
 use_logging_server: ""
 # use_logging_server: "<ip-address>"
 
-# Req 64: System time must be synchronized against a reference time source.
+# Req 63: System time must be synchronized against a reference time source.
 # To be compliant set 'true' for variable 'use_ntp'.
 config_ntp: false
 # To be compliant set IPv4 and/or IPv6 address or domain name of
@@ -113,7 +108,7 @@ use_ntp_servers:
 set_timezone: true
 use_timezone: "Europe/Berlin"
 
-# Req 65: The management of the operating system must be done via a dedicated
+# Req 64: The management of the operating system must be done via a dedicated
 # management network which is independent from the production network.
 # ------------------------------------------------------------------------
 # IMPORTANT:

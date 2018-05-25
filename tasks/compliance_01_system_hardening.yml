@@ -25,10 +25,10 @@
         msg: "WARNING: File modprobe.d to disable protocols not found!"
 
 - block:
-    - name: req-001.2 unload kernel modules for protocols
-      shell: "{{ modprobe_tool }} {{ item }}"
+    - name: req-001.2 check for loaded kernel modules for protocols
+      shell: lsmod | grep -o {{ item }} | sort -u | wc -l
       register: loaded_mods_protocols
-      failed_when: '"ERROR" not in loaded_mods_protocols.stderr'
+      failed_when: loaded_mods_protocols.stdout != "0"
       changed_when: false
       check_mode: no
       with_items:
@@ -53,7 +53,7 @@
 
 - block:
     - name: req-001.1 check for open tcp ports
-      shell: "{{ check_open_tcp }} 2>/dev/null | grep -i {{ grep_open_tcp }} | awk '{print $4}' | sed 's/.*://' | sort -nu"
+      shell: ss -ntl 2>/dev/null | grep -i 'listen' | awk '{print $4}' | sed 's/.*://' | sort -nu
       register: open_tcp_ports
       changed_when: false
       check_mode: no
@@ -71,7 +71,7 @@
 
 - block:
     - name: req-001.2 check for open UDP ports
-      shell: "{{ check_open_udp }} 2>/dev/null | grep -i {{ grep_open_udp }} | awk '{print $4}' | sed 's/.*://' | sort -nu"
+      shell: ss -nlu 2>/dev/null | grep -i 'listen\|unconn' | awk '{print $4}' | sed 's/.*://' | sort -nu
       register: open_udp_ports
       changed_when: false
       check_mode: no
@@ -99,7 +99,7 @@
         name: 'iptables'
         state: absent
       register: check_iptables_2
-      failed_when: check_iptables_2.changed == false
+      failed_when: check_iptables_2.changed == true
       changed_when: false
   rescue:
     - debug:
@@ -221,14 +221,14 @@
         match: state
         ctstate: NEW
         jump: ACCEPT
-      with_items: "{{ set_fw_ports_udp }}"
+      with_items: "{{ set_iptables_ports_udp }}"
       register: check_iptables_5_2
       failed_when: check_iptables_5_2.changed == true
   rescue:
     - debug:
         msg: "WARNING: IPtables rules for udp services are missing!"
   when: config_iptables == true and
-        ( set_fw_rules_udp == true and check_iptables_2.changed == true)
+        ( config_iptables_rules_udp == true and check_iptables_2.changed == true)
 
 - block:
     - name: req-005.3 configure rules for tcp
@@ -239,14 +239,14 @@
         match: state
         ctstate: NEW
         jump: ACCEPT
-      with_items: "{{ set_fw_ports_tcp }}"
+      with_items: "{{ set_iptables_ports_tcp }}"
       register: check_iptables_5_3
       failed_when: check_iptables_5_3.changed == true
   rescue:
     - debug:
         msg: "WARNING: IPtables rules for tcp services are missing!"
   when: config_iptables == true and
-        ( set_fw_rules_tcp == true and check_iptables_2.changed == true)
+        ( config_iptables_rules_tcp == true and check_iptables_2.changed == true)
 
 # Req 6: If iptables is used, a default policy must be configured to drop all
 # traffic.
@@ -319,9 +319,22 @@
   rescue:
     - debug:
         msg: "WARNING: Rsync is enabled!"
+  when: ansible_distribution == "Ubuntu"
 
 - block:
-    - name: req-007.5 check if unwanted sofware is installed
+    - name: req-007.5 check if rsync is disabled
+      shell: systemctl is-enabled "{{ use_rsync_deamon }}"
+      register: check_rsync_7_6
+      failed_when: check_rsync_7_6.stdout != "disabled"
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Rsync is enabled!"
+  when: ansible_distribution_version != "14.04"
+
+- block:
+    - name: req-007.6 check if unwanted sofware is installed
       package:
         name: '{{ item }}'
         state: absent
@@ -333,7 +346,7 @@
         msg: "WARNING: Not needed software  is installed!"
 
 - block:
-    - name: req-007.6 check if unwanted servers are not installed
+    - name: req-007.7 check if unwanted servers are not installed
       package:
         name: '{{ item }}'
         state: absent
@@ -345,7 +358,7 @@
         msg: "WARNING: Not needed servers are installed!"
 
 - block:
-    - name: req-007.7 check if unwanted clients are not installed
+    - name: req-007.8 check if unwanted clients are not installed
       package:
         name: '{{ item }}'
         state: absent
@@ -378,9 +391,9 @@
 
 - block:
     - name: req-008.2 unload kernel modules for filesystems
-      shell: "{{ modprobe_tool }} {{ item }}"
-      register: loaded_mods_fs
-      failed_when: '"ERROR" not in loaded_mods_fs.stderr'
+      shell: lsmod | grep -o {{ item }} | sort -u | wc -l
+      register: loaded_mods_protocols
+      failed_when: loaded_mods_protocols.stdout != "0"
       changed_when: false
       check_mode: no
       with_items:

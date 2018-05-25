@@ -7,23 +7,27 @@
 # Don't change this file. Variables to change by the user are located
 # in file '/default/main.yml'!
 
+# Do not change groups sudo and ssh! Add only additional groups if
+# needed. Otherwise, you can't login afterwards!
+use_group_sudo: "sudo"
+use_group_ssh: "ssh"
+
+# Tool for updating grub after configuration change.
+grub_update_tool: "update-grub"
+
 # -------------------
 # 01 System Hardening
 # -------------------
 
 # Req 1: Unused services and protocols must be deactivated.
-check_open_tcp: 'netstat -nlt'
-grep_open_tcp: 'LISTEN'
-check_open_udp: 'netstat -nlu'
-grep_open_udp: 'LISTEN'
-
-# Req 1: Unused services and protocols must be deactivated.
 # Req 8: Unused filesystems must be disabled.
 modprobe_package: 'kmod'
-modprobe_tool: 'kmod'
 
 # Req 2: The reachability of services must be restricted.
 iptables_tools: 'iptables-persistent'
+
+# Req 7: Unused software must not be installed or must be uninstalled.
+use_rsync_deamon: 'rsync'
 
 # ---------------------------------
 # 04 Authentication & Authorization
@@ -84,11 +88,11 @@ groupm_owner: "root"
 groupm_group: "root"
 groupm_mode: "0640"
 
-# File: /boot/grupb2/grub.cfg
-grub_file: "/boot/grupb2/grub.cfg"
+# File: /boot/grupb/grub.cfg
+grub_file: "/boot/grub/grub.cfg"
 grub_owner: "root"
 grub_group: "root"
-grub_mode: "0400"
+grub_mode: "0444"
 
 # Log files in /var/log
 logfile_mode: "o-wx"
@@ -107,7 +111,24 @@ sshd_conf_mode: "og-rwx"
 
 # Req 43: If a system has Internet facing services or is a
 # virtualization host, a MAC solution must be used.
-use_mac_type: 'apparmor'
+use_mac_type: "apparmor"
+use_mac_package: "apparmor"
+
+# Req 46: If SELinux is used, the policy must be configured.
+# Variable is only used if changed to SELinux!
+use_selinux_type: "ubuntu"
+
+# Req 49: If a password is used as an authentication attribute, it must have
+# at least 8 characters and contain three of the following categories:
+# upper cases, lower case, numbers and special characters.
+use_pam_pwquality: "libpam-pwquality"
+
+# Req 51: Security relevant events must be logged with a precise timestamp
+# and a unique system reference.
+use_audit_deamon: "auditd"
+
+# Req 54: System time must be synchronized against a reference time source.
+use_ntp_deamon: "ntp"
 
 # --------------------
 # 06 System Management

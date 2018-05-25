@@ -12,11 +12,11 @@
   when: ansible_check_mode == false
 # ========================================================================
 
-# Req 52: Security relevant events must be logged with a precise timestamp
+# Req 51: Security relevant events must be logged with a precise timestamp
 # and a unique system reference.
 
 - block:
-    - name: req-052.1 check if logging is enabled before auditd starts
+    - name: req-051.1 check if logging is enabled before auditd starts
       lineinfile:
         dest: '/etc/default/grub'
         regexp: '^GRUB_CMDLINE_LINUX=(.*)'
@@ -28,19 +28,19 @@
         msg: "WARNING: Logging is not correct configured during system boot!"
 
 - block:
-    - name: req-052.2 check if auditd is installed
+    - name: req-051.2 check if auditd is installed
       package:
-        name: 'auditd'
+        name: '{{ use_audit_deamon }}'
         state: absent
       register: check_auditd_installed
-      failed_when: check_auditd_installed.changed == false
+      failed_when: check_auditd_installed.changed == true
       changed_when: false
   rescue:
     - debug:
         msg: "WARNING: Auditd service needed for logging is not installed!"
 
 - block:
-    - name: req-052.3 check config for logging events
+    - name: req-051.3 check config for logging events
       lineinfile:
         path: '/etc/audit/audit.rules'
         line: "{{ item }}"
@@ -54,7 +54,7 @@
   when: check_auditd_installed.changed == true
 
 - block:
-    - name: req-052.4 check configuration of logging for apparmor
+    - name: req-051.4 check configuration of logging for apparmor
       lineinfile:
         path: '/etc/audit/audit.rules'
         line: "{{ item }}"
@@ -73,7 +73,7 @@
     - check_auditd_installed.changed == true
 
 - block:
-    - name: req-052.5 check configuration of logging for selinux
+    - name: req-051.5 check configuration of logging for selinux
       lineinfile:
         path: '/etc/audit/audit.rules'
         line: '{{ set_selinux_events }}'
@@ -96,7 +96,7 @@
       register: priv_commands
       changed_when: false
       check_mode: no
-    - name: req-052.6 configure logging for priviledged commands
+    - name: req-051.6 configure logging for priviledged commands
       lineinfile:
         path: '/etc/audit/audit.rules'
         line: '-a always,exit -F path={{ item }} -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged'
@@ -110,7 +110,7 @@
   when: check_auditd_installed.changed == true
 
 - block:
-    - name: req-052.7 check if audit configuration is immutable
+    - name: req-051.7 check if audit configuration is immutable
       lineinfile:
         path: '/etc/audit/audit.rules'
         line: '-e 2'
@@ -122,10 +122,10 @@
         msg: "WARNING: Audit configuration is not set to immutable in audit.rules file!"
   when: check_auditd_installed.changed == true
 
-# Req 53: Log rotate for logfiles must be configured.
+# Req 52: Log rotate for logfiles must be configured.
 
 - block:
-    - name: req-053.1 check max size for log rotate in auditd.conf
+    - name: req-052.1 check max size for log rotate in auditd.conf
       lineinfile:
         path: '/etc/audit/auditd.conf'
         regexp: '^max_log_file ='
@@ -139,7 +139,7 @@
   when: check_auditd_installed.changed == true
 
 - block:
-    - name: req-053.2 check if rotate is enabled for auditd
+    - name: req-052.2 check if rotate is enabled for auditd
       lineinfile:
         path: '/etc/audit/auditd.conf'
         regexp: '^max_log_file_action ='
@@ -153,7 +153,7 @@
   when: check_auditd_installed.changed == true
 
 - block:
-    - name: req-053.3 check time for log rotate
+    - name: req-052.3 check time for log rotate
       lineinfile:
         path: '/etc/logrotate.conf'
         line: '{{ use_rotate_time }}'
@@ -165,7 +165,7 @@
         msg: "WARNING: Time for log rotate is not configured!"
 
 - block:
-    - name: req-053.4 check count for log rotate
+    - name: req-052.4 check count for log rotate
       lineinfile:
         path: '/etc/logrotate.conf'
         regexp: '^rotate'
@@ -178,7 +178,7 @@
         msg: "WARNING: Count for log rotate is not configured!"
 
 - block:
-    - name: req-053.5 check max age for log rotate
+    - name: req-052.5 check max age for log rotate
       lineinfile:
         path: '/etc/logrotate.conf'
         line: 'maxage {{ use_rotate_maxage }}'
@@ -190,7 +190,7 @@
         msg: "WARNING: Max age for log rotate is not configured!"
 
 - block:
-    - name: req-053.6 check max size for log rotate
+    - name: req-052.6 check max size for log rotate
       lineinfile:
         path: '/etc/logrotate.conf'
         line: 'maxsize {{ use_rotate_maxsize }}'
@@ -208,7 +208,7 @@
   check_mode: no
 
 - block:
-    - name: req-053.7 check count for rotate in files in etc/logrotate.d
+    - name: req-052.7 check count for rotate in files in etc/logrotate.d
       replace:
         path: '/etc/logrotate.d/{{ item }}'
         regexp: '^\s+rotate.*$'
@@ -221,7 +221,7 @@
         msg: "WARNING: Count for log rotate is not configured in files in logrotate.d!"
 
 - block:
-    - name: req-053.8 rotate time for rotate in files in 'etc/logrotate.d'
+    - name: req-052.8 rotate time for rotate in files in 'etc/logrotate.d'
       replace:
         path: '/etc/logrotate.d/{{ item }}'
         after: '\s+rotate.*'
@@ -234,7 +234,7 @@
         msg: "WARNING: Rotate time is not configured in files in logrotate.d!"
 
 - block:
-    - name: req-053.9 check max size for rotate in files in 'etc/logrotate.d'
+    - name: req-052.9 check max size for rotate in files in 'etc/logrotate.d'
       shell:  grep "maxsize" /etc/logrotate.d/* | grep -v "{{ use_rotate_maxsize }}"| wc -l
       register: check_log_maxsize
       failed_when: check_log_maxsize.stdout != "0"
@@ -245,7 +245,7 @@
         msg: "WARNING: MaxSize for log rotate is not configured in files in logrotate.d!"
 
 - block:
-    - name: req-053.10 check max age for rotate in files in 'etc/logrotate.d'
+    - name: req-052.10 check max age for rotate in files in 'etc/logrotate.d'
       shell:  grep "maxage" /etc/logrotate.d/* | grep -v "{{ use_rotate_maxage }}"| wc -l
       register: check_log_maxage
       failed_when: check_log_maxage.stdout != "0"
@@ -255,25 +255,25 @@
     - debug:
         msg: "WARNING: MaxAge for log rotate is not configured in files in logrotate.d!"
 
-# Req 54: Security relevant logging data must be send to an external system
+# Req 53: Security relevant logging data must be send to an external system
 # direct after their creation.
 
 - block:
-    - name: req-054.1 check if logging server is installed
+    - name: req-053.1 check if logging server is installed
       package:
         name: '{{ use_syslog_type }}'
         state: absent
       register: check_log_server
-      failed_when: check_log_server.changed == false
+      failed_when: check_log_server.changed == true
       changed_when: false
   rescue:
     - debug:
         msg: "WARNING: {{ use_syslog_type }} is not installed!"
 
 - block:
-    - name: req-054.2 check configuration of logging server
+    - name: req-053.2 check configuration of logging server
       lineinfile:
-        dest: '/etc/rsyslog.d/50-default.conf'
+        dest: '/etc/rsyslog.conf'
         state: present
         line: '*.* @{{ use_logging_server }}:514'
       register: check_logsrv_config
@@ -284,7 +284,7 @@
   when: use_syslog_type == "rsyslog" and check_log_server.changed == true
 
 - block:
-    - name: req-054.3 check rsyslog default file permission
+    - name: req-053.3 check rsyslog default file permission
       lineinfile:
         path: '/etc/rsyslog.conf'
         state: present
@@ -297,23 +297,23 @@
         msg: "WARNING: Permission used for log files is not correct configured!"
   when: use_syslog_type == "rsyslog" and check_log_server.changed == true
 
-# Req 55: System time must be synchronized against a reference time source.
+# Req 54: System time must be synchronized against a reference time source.
 # Test your NTP with "$ timedatectl" and "ntpq -p" (Ubuntu)
 
 - block:
-    - name: req-055.1 check if ntp is installed
+    - name: req-054.1 check if ntp is installed
       package:
         name: ntp
         state: absent
       register: check_ntp
-      failed_when: check_ntp.changed == false
+      failed_when: check_ntp.changed == true
       changed_when: false
   rescue:
     - debug:
         msg: "WARNING: NTP service is not installed"
 
 - block:
-    - name: req-055.2 set time zone
+    - name: req-054.2 set time zone
       shell: timedatectl status | grep -i "{{ use_timezone }}" | wc -l
       register: check_timezone
       failed_when: check_timezone.stdout == "0"
@@ -325,7 +325,7 @@
   when: check_ntp.changed == true
 
 - block:
-    - name: req-055.3 check config in init.d/ntp file
+    - name: req-054.3 check config in init.d/ntp file
       lineinfile:
         dest: '/etc/init.d/ntp'
         regexp: '^RUNASUSER=(.*)'
@@ -334,11 +334,24 @@
       failed_when: (check_ntp_initd is changed)
   rescue:
     - debug:
-        ntp: "WARNING: NTP configuration in init.d is not correct!"
-  when: check_ntp.changed == true
+        msg: "WARNING: NTP configuration in init.d is not correct!"
+  when: check_ntp.changed == true  and ansible_os_family == "Debian"
 
 - block:
-    - name: req-055.4 check ntp config file
+    - name: req-054.3 check config in sysconfig/ntpd file
+      lineinfile:
+        dest: '/etc/sysconfig/ntpd'
+        regexp: '^OPTIONS=(.*)'
+        line: 'OPTIONS="-u ntp:ntp"'
+      register: check_ntp_ntpd
+      failed_when: (check_ntp_ntpd is changed)
+  rescue:
+    - debug:
+        msg: "WARNING: NTP configuration in ntpd is not correct!"
+  when: config_ntp == true and ansible_os_family == "RedHat"
+
+- block:
+    - name: req-054.4 check ntp config file
       stat:
         path: '/etc/ntp.conf'
       register: ntp_status
@@ -349,7 +362,7 @@
   when: check_ntp.changed == true
 
 - block:
-    - name: req-055.5 check ntp configuration
+    - name: req-054.5 check ntp configuration
       lineinfile:
         path: '/etc/ntp.conf'
         line: "server {{ item }}"
