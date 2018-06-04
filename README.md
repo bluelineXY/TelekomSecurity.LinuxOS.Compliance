@@ -21,11 +21,9 @@ for used document).
 -------------------------------------------------------------------------------
 
 **IMPORTANT:** The Ansible role for compliance checks is non-intrusive. This
-means no changes will be made on systems. With one exception: the role installs
-the needed software packet `python-apt` if it is missing. Without this software
-the use of `apt` is not possible. The scripts include shell commands to perform
-checks on files, system parameters etc. The playbook must run in Ansible check
-mode ("dry run"). See `Execute` for more information.
+means no changes will be made on systems. The scripts include shell commands to 
+perform checks on files, system parameters etc. The playbook must run in Ansible 
+check mode ("dry run"). See `Execute` for more information.
 
 -------------------------------------------------------------------------------
 
