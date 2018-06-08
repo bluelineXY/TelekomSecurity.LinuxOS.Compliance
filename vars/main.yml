@@ -35,7 +35,7 @@ used_udp_services:
 
 # Req 2: The reachability of services must be restricted.
 # Local firewall for service protection (default iptables).
-config_iptables: false
+config_iptables: true
 
 # ------------------------------------------------------------------------
 # Note:
