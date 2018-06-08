@@ -107,15 +107,16 @@ config_unused_servers: true
 disable_unused_servers:
   - "nfs-kernel-server"
   - "rpcbind"
-  - "bind9"
   - "vsftpd"
-  - "apache2"
   - "dovecot-core"
   - "dovecot-pop3d"
   - "dovecot-imapd"
-  - "samba"
-  - "squid3"
-  - "snmpd"
+  # - "apache2"
+  # - "bind9"
+  # - "samba"
+  # - "squid3"
+  # - "snmpd"
+
 
 config_unused_clients: true
 disable_unused_clients:
