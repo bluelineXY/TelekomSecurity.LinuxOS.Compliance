@@ -74,6 +74,7 @@ Directory `vars` includes the following files for specific variables:
 
 * /vars/main.yml         
 * /vars/Ubuntu.yml
+* /vars/RedHat.yml
 
 ## Inventory
 
