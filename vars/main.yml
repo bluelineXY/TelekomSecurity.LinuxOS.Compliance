@@ -1,737 +1,125 @@
 ---
 # ------------------------------------------------------------------------
-# Vars: Telekom Security Linux OS Hardening & Compliance
+# Default Vars: Telekom Security Linux OS Hardening & Compliance
 # ------------------------------------------------------------------------
 
-# =IMPORTANT==============================================================
-#
-# Changing variables is this file have impact on systems compliance to
-# Deutsche Telekom AG security requirements!
-#
+# ========================================================================
+# Please set values for variables in this file before running the Ansible
+# playbook!
 # ========================================================================
 
-# -------------------
-# 01 System Hardening
-# -------------------
-
-# Req 1: Unused services and protocols must be deactivated.
-# Protocols to disable with modprobe.
-config_disable_protocols: true
-disable_unused_protocols:
-  - "dccp"
-  - "sctp"
-  - "rds"
-  - "tipc"
-
-# Defines TCP services that are allowed on system.
-used_tcp_services:
-  - "22"
-  # - ""
-
-# Defines UDP services that are allowed on system.
-used_udp_services:
-  - ""
-  - ""
-
-# Req 2: The reachability of services must be restricted.
-# Local firewall for service protection (default iptables).
-config_iptables: false
-
 # ------------------------------------------------------------------------
-# Note:
-# The IPTables rules configured with this script allows only SSH (22)
-# incomming. More incomming services can be configures with vars
-# 'set_fw_rule_udp' and 'set_fw_rule_tcp'.
-# Outgoing is allowed anything. To configure stricter rules change
-# configuration accordingly your demands.
+# IMPORTANT:
+# The playbook disables all SSH access without public-key. A user with
+# public key must be configured on system or a path to a public key file
+# must be configured (var 'use_key_file'). Otherwise, remote login with
+# SSH is not longer possible without a public key!
+# ------------------------------------------------------------------------
+# (Note: use 'ssh-keygen -t rsa -b 4096' to generate a private/public
+#        key pair.)
 # ------------------------------------------------------------------------
 
-# Req 3: If iptables is used, a loopback traffic must be configured.
-config_iptables_loopback: true
+# Set path to public-key file (e.g. id_rsa.pub) for Ansible user!
+config_key_file: false
+use_key_file_ansible: ""
 
-# Req 4: If iptables is used, outbound and established connections must
-# be configured.
-config_iptables_outbound: true
+# If 'set_new_user' is false the Ansible user will be used instead.
+config_new_user: false
+# Change vars 'use_user_name' and 'use_password' to your own values.
+use_user_name: ""
+use_password: ""
+# Set path to public-key file (e.g. id_rsa.pub) for new user!
+use_key_file_new: ""
 
-# Req 5: If iptables is used, rules must be existing for all ports in
-# listening state.
-config_iptables_rules: true
+# Set variable to false if grub bootloader is not used (e.g. for virtual
+# machines)
+config_bootloader_grub: true
 
-# For UDP set 'true' and define UDP port which should be allowed
-# incomming.
-config_iptables_rules_udp: false
-set_iptables_ports_udp:
-  # -
-  # - 123   # Example: NTP
-  # - 161   # Example: SNMP
-  # - 162   # Example: SNMP
+# Req 9: Dedicated partitions must be used for growing content that can
+# influence the availability of the system.
 
-# For TCP set 'true' and define TCP port which should be allowed
-# incomming.
-# Note! If SSH is enabled rule will be set automatically.
-config_iptables_rules_tcp: false
-set_iptables_ports_tcp:
-  # -
-  # - 80   # Example: HTTP
-  # - 443   # Example: HTTPS
-
-# Req 6: If iptables is used, a default policy must be configured to drop all
-# traffic.
-config_iptables_default: true
-
-# Information for Req 13, Req 15, Req 17 and Req 18:
 # ------------------------------------------------------------------------
-#  Note: Partitioning must be done during Linux installation. this
-#        can not be changed afterwards during automated hardening!
+# IMPORTANT (for req 09)
+#
+#           Partitions must be generated during OS installation!
+#   Set variables 'set_partition_...' to false if partitions not exist.
+#
 # ------------------------------------------------------------------------
 
-# Set 'set_partition_*' variable for Req 14, Req 16 and/or Req 19 to
-# 'false', if partions are not used!
+# ------------------------------------------------------------------------
+# Enable ('true') the appropriate variable for existing partitions.
+# ------------------------------------------------------------------------
+config_partition_tmp: false
+# Use a partition for '/var' or partitions for '/var/tmp' and '/var/log'.
+config_partition_var: false
+# Use partitions for '/var/tmp' and '/var/log' or a partition for '/var'.
+config_partition_var_tmp: false
+config_partition_var_log: false
 
-# Req 7: Unused software must not be installed or must be uninstalled.
-
-config_disable_autofs: true
-config_disable_initd: true
-config_disable_xinitd: true
-config_disable_rsync: true
-
-config_disable_software: true
-disable_software:
-  - "xserver-xorg-core*"
-  - "avahi-daemon"
-  - "cups"
-  - "isc-dhcp-server*"
-  - "nis"
-
-config_unused_servers: true
-disable_unused_servers:
-  - "nfs-kernel-server"
-  - "rpcbind"
-  - "bind9"
-  - "vsftpd"
-  - "apache2"
-  - "dovecot-core"
-  - "dovecot-pop3d"
-  - "dovecot-imapd"
-  - "samba"
-  - "squid3"
-  - "snmpd"
-
-config_unused_clients: true
-disable_unused_clients:
-  - "rsh-redone-client"
-  - "rsh-client"
-  - "talk"
-  - "telnet"
-  - "ldap-utils"
-
-# Req 8: Unused filesystems must be disabled.
-config_disable_filesystems: true
-disable_unused_filesystems:
-  - "cramfs"
-  - "freevxfs"
-  - "jffs2"
-  - "hfs"
-  - "hfsplus"
-  - "squashfs"
-  - "udf"
-  - "vfat"
-
-# Req 10: Parameters nodev and nosuid must be set for partitions where this
-# is applicable.
-config_partition_options: true
-use_partition_options: "defaults,nosuid,nodev,noexec"
-
-# Req 11: Core dumps must be disabled.
-# compliant = true; not compliant = false
-config_restrict_coredumps: true
-
-use_coredumps:
-  fs.suid_dumpable: 0
-
-# Req 12: Protection against buffer overflows must be enabled.
-# kernel.exec-shield: 1   # only for RHEL < v7
-config_buffer_overflow_protection: true
-use_buffer_overflow_protection:
-  kernel.randomize_va_space: 2
-
-# Req 13: Prelink must not be used.
-config_disable_prelink: true
-
-# Req 14: IPv4 protocol stack must securely configured.
-config_network_ipv4: true
-use_network_config_ipv4:
-
-  # Req 14 (1): IPv4 forwarding must be disabled.
-  net.ipv4.ip_forward: 0
-
-  # Req 14 (2): IPv4 redirects must not be accepted.
-  net.ipv4.conf.all.accept_redirects: 0
-  net.ipv4.conf.default.accept_redirects: 0
-
-  # Req 14 (3): Secure IPv4 redirects must not be accepted.
-  net.ipv4.conf.all.secure_redirects: 1
-  net.ipv4.conf.default.secure_redirects: 1
-
-  # Req 14 (4): IPv4 packet redirect sending must be disabled.
-  net.ipv4.conf.all.send_redirects: 0
-  net.ipv4.conf.default.send_redirects: 0
-
-  # Req 14 (5): IPv4 source routed packets must not be accepted.
-  net.ipv4.conf.all.accept_source_route: 0
-  net.ipv4.conf.default.accept_source_route: 0
-
-  # Req 14 (6): Suspicious packets must be logged
-  net.ipv4.conf.all.log_martians: 1
-  net.ipv4.conf.default.log_martians: 1
-
-  # Req 14 (7): Broadcast ICMP requests must be ignored.
-  net.ipv4.icmp_echo_ignore_broadcasts: 1
-
-  # Req 14 (8): Bogus ICMP responses must be ignored.
-  net.ipv4.icmp_ignore_bogus_error_responses: 1
-
-  # Req 14 (9): Reverse Path Filtering must be enabled.
-  net.ipv4.conf.all.rp_filter: 1
-  net.ipv4.conf.default.rp_filter: 1
-
-  # Req 14 (10): TCP SYN Cookies must be enabled.
-  net.ipv4.tcp_syncookies: 1
-
-  # Req 14 (11): An ICMP ratelimit must be configured.
-  net.ipv4.icmp_ratelimit: 100
-  net.ipv4.icmp_ratemask: 88089
-
-  # Req 14 (12): Timestamp must be disabled.
-  net.ipv4.tcp_timestamps: 0
-
-  # Req 14 (13): ARP must be restricted.
-  net.ipv4.conf.all.arp_ignore: 2
-  net.ipv4.conf.all.arp_announce: 2
-  net.ipv4.conf.all.arp_notify: 0
-  net.ipv4.conf.all.arp_accept: 0
-
-  # Req 14 (14): Shared media redirects must be accepted.
-  net.ipv4.conf.all.shared_media: 1
-  net.ipv4.conf.default.shared_media: 1
-
-  # Optional: Disable ICMP echo (ping). Default 0 (ping is allowed).
-  net.ipv4.icmp_echo_ignore_all: 0
+# Enable if extra partition for /home is used.
+config_partition_home: false
 
 # Req 15: IPv6 protocol stack must securely configured.
-use_network_config_ipv6_disabled:
-
-  # Req 15 (1): If not used IPv6 must be disabled completly.
-  net.ipv6.conf.all.disable_ipv6: 1
-  net.ipv6.conf.default.disable_ipv6: 1
-
-# Req 15: IPv6 protocol stack must securely configured.
-config_network_ipv6: true
-use_network_config_ipv6_enabled:
-
-  # Enables IPv6
-  net.ipv6.conf.all.disable_ipv6: 0
-  net.ipv6.conf.default.disable_ipv6: 0
-
-  # Req 15 (2): IPv6 forwarding must be disabled.
-  net.ipv6.conf.all.forwarding: 0
-  net.ipv6.conf.default.forwarding: 0
-
-  # Req 15 (3): IPv6 redirects must not be accepted.
-  net.ipv6.conf.all.accept_redirects: 0
-  net.ipv6.conf.default.accept_redirects: 0
-
-  # Req 15 (4): IPv6 source routed packets must not be accepted.
-  net.ipv6.conf.all.accept_source_route: 0
-  net.ipv6.conf.default.accept_source_route: 0
-
-  # Req 15 (5): IPv6 router advertisements must not be accepted.
-  net.ipv6.conf.all.accept_ra: 0
-  net.ipv6.conf.default.accept_ra: 0
-  net.ipv6.conf.all.accept_ra_rtr_pref: 0
-  net.ipv6.conf.default.accept_ra_rtr_pref: 0
-  net.ipv6.conf.all.accept_ra_pinfo: 0
-  net.ipv6.conf.default.accept_ra_pinfo: 0
-  net.ipv6.conf.all.accept_ra_defrtr: 0
-  net.ipv6.conf.default.accept_ra_defrtr: 0
-
-  # Req 15 (6): IPv6 router solicitations messages must not be accepted.
-  net.ipv6.conf.all.router_solicitations: 0
-  net.ipv6.conf.default.router_solicitations: 0
-
-  # Req 15 (7): IPv6 autoconfiguration must be disabled
-  net.ipv6.conf.all.autoconf: 0
-  net.ipv6.conf.default.autoconf: 0
-
-  # Req 15 (8): IPv6 neighbor solicitations must be disabled.
-  net.ipv6.conf.all.dad_transmits: 0
-  net.ipv6.conf.default.dad_transmits: 0
-
-# ----------------
-# 02 System Update
-# ----------------
+# ------------------------------------------------------------------------
+# Enable ('true') if IPv6 will be used.
+# ------------------------------------------------------------------------
+config_ipv6_enable: false
 
 # Req 18: Emerged vulnerabilities in software and hardware of a system
 # must be fixed or protected against misuse.
-# Variables for system update must be set in '/defaults/main.yml'.
+# ------------------------------------------------------------------------
+# Enable ('true') if system upgrade should be done.
+# ------------------------------------------------------------------------
+do_system_upgrade: false
 
-# --------------------------------
-# 03 Protecting Data & Information
-# --------------------------------
-# Req 19: System and warning banners must not contain any sensitive data.
-# Define banner here if needed. Banner will be set for motd, issue and
-# issue.net.
-config_banner: true
-use_banner: ""
-
-# If 'true' update-motd.d in PAM configuration will be disabled to stop
-# showing system information after login.
-config_pam_motd: true
-
-# ---------------------------------
-# 04 Authentication & Authorization
-# ---------------------------------
-
-# Req 21: System accounts must be non-login
-# Disables all system accounts inclusive root
-config_nologin_sys_accounts: true
-
-# Req 22: User accounts must be protected against unauthorized usage by at
-# least one authentication attribute.
-config_user_without_pw: true
-
-# Req 25: The system must be connected to a central system for user
+# Req 26: The system must be connected to a central system for user
 # administration.
-# Variables for central user mgmt. must be set in '/defaults/main.yml'.
-
-# Req 26: Authentication must be used for single user mode.
 # ------------------------------------------------------------------------
-# Note: Hardening playbook will set a random secret password to root.
+# Not implemented in this version!
 # ------------------------------------------------------------------------
-config_root_password: true
 
-# Req 27: Passwords must be protected with an encryption function.
-# Password encryption will be done with SHA512.
-# Define rounds to encrypt password. Linux default is 5000.
-# For better security we use 100.000.
-config_sha512_rounds: true
-use_sha512_rounds: 100000
-
-# Req 30: A user's home directory must owned by the user and have permission
-# mode 750.
-config_home_permissions: true
-
-# Req 31: Default group for the root account must be GID 0.
-config_root_gid: true
-
-# Req 37: The default user umask must be 027 or more restrictive.
-# More restrictive means 077.
-config_default_umask: true
-use_default_umask: "027"
-
-# Req 38: Sticky bit must be set on world-writable directories.
-config_sticky_bit: true
-
-# Req 39: No regular files that are world writable must exist.
-config_world_files: true
-
-# Req 41: Not needed SUID and SGID bits must be removed from executables.
-# Blacklist/whitelist for SUID and SGID.
-# Don't change values in the default blacklist/whitelist.
-# Use variables 'use_suid_sgid_blacklist' and 'use_suid_sgid_whitelist'
-# to define and overwrite values if needed.
-config_suid_sgid: true
-use_default_suid_sgid_blacklist:
-  - '/bin/mount'
-  - '/bin/su'
-  - '/bin/umount'
-  - '/usr/bin/rcp'
-  - '/usr/bin/rlogin'
-  - '/usr/bin/rsh'
-  - '/usr/libexec/openssh/ssh-keysign'
-  - '/usr/lib/openssh/ssh-keysign'
-  - '/sbin/netreport'
-  - '/usr/sbin/usernetctl'
-  - '/usr/sbin/userisdnctl'
-  - '/usr/sbin/pppd'
-  - '/usr/bin/lockfile'
-  - '/usr/bin/mail-lock'
-  - '/usr/bin/mail-unlock'
-  - '/usr/bin/mail-touchlock'
-  - '/usr/bin/dotlockfile'
-  - '/usr/bin/arping'
-  - '/usr/sbin/uuidd'
-  - '/usr/bin/mtr'
-  - '/usr/lib/evolution/camel-lock-helper-1.2'
-  - '/usr/lib/pt_chown'
-  - '/usr/lib/eject/dmcrypt-get-device'
-  - '/usr/lib/mc/cons.saver'
-
-use_default_suid_sgid_whitelist:
-  - '/bin/ping'
-  - '/sbin/pam_timestamp_check'
-  - '/sbin/unix_chkpwd'
-  - '/usr/bin/at'
-  - '/usr/bin/gpasswd'
-  - '/usr/bin/locate'
-  - '/usr/bin/newgrp'
-  - '/usr/bin/passwd'
-  - '/usr/bin/ssh-agent'
-  - '/usr/libexec/utempter/utempter'
-  - '/usr/sbin/lockdev'
-  - '/usr/sbin/sendmail.sendmail'
-  - '/usr/bin/expiry'
-  - '/bin/ping6'
-  - '/usr/bin/traceroute6.iputils'
-  - '/sbin/mount.nfs'
-  - '/sbin/umount.nfs'
-  - '/sbin/mount.nfs4'
-  - '/sbin/umount.nfs4'
-  - '/usr/bin/crontab'
-  - '/usr/bin/wall'
-  - '/usr/bin/write'
-  - '/usr/bin/screen'
-  - '/usr/bin/mlocate'
-  - '/usr/bin/chage'
-  - '/usr/bin/chfn'
-  - '/usr/bin/chsh'
-  - '/bin/fusermount'
-  - '/usr/bin/pkexec'
-  - '/usr/bin/sudo'
-  - '/usr/bin/sudoedit'
-  - '/usr/sbin/postdrop'
-  - '/usr/sbin/postqueue'
-  - '/usr/sbin/suexec'
-  - '/usr/lib/squid/ncsa_auth'
-  - '/usr/lib/squid/pam_auth'
-  - '/usr/kerberos/bin/ksu'
-  - '/usr/sbin/ccreds_validate'
-  - '/usr/lib/dbus-1.0/dbus-daemon-launch-helper'
-  - '/usr/lib/policykit-1/polkit-agent-helper-1'
-
-# User-defined the following variabled to define own filed for SUID and SGID.
-use_suid_sgid_blacklist: []
-use_suid_sgid_whitelist: []
-# Set to 'true' if SUID and SGID bits should be removed from files that are
-# not defined in the whitelists.
-remove_suid_sgid_from_unknown: true
-
-# Req 42: Permissions of security relevant configuration files must be
-# restricted.
-# Files: /etc/passwd, /etc/shadow, /etc/group etc.
-config_system_files_permissions: true
-
-# File: /boot/grub2/grub.cfg
-config_bootloader_file_permissions: true
-
-# Files: /var/log/*
-config_log_files_permissions: true
-
-# File: /etc/ssh/sshd_config
-config_ssh_file_permissions: true
-
-# Req 43: If a system has Internet facing services or is a
-# virtualization host, a MAC solution must be used.
+# Req 63: Security relevant logging data must be send to an external
+# system direct after their creation.
 # ------------------------------------------------------------------------
-# Note: Playbook will not install other than the default MAC solution of
-# used Linux distribution.
-#
-# Default: Ubuntu - AppArmor; RHEL - SELinux
-#
+# You can only use rsyslog in this version!
+# Note: syslog-ng will be implemented later!
+# ------------------------------------------------------------------------
+# To be compliant set 'true' for variable 'use_central_logging'.
+config_central_logging: false
+# In this version only rsyslog is supported!
+use_syslog_type: "rsyslog"
+# To be compliant set IPv4 and/or IPv6 address or domain name of
+# logging server.
+use_logging_server: ""
+# use_logging_server: "<ip-address>"
+
+# Req 63: System time must be synchronized against a reference time source.
+# To be compliant set 'true' for variable 'use_ntp'.
+config_ntp: false
+# To be compliant set IPv4 and/or IPv6 address or domain name of
+# ntp server(s).
+use_ntp_servers:
+  - "ntp1.t-online.de"
+#  - "<ip4-address or hostname>"
+#  - "<ip6-address or hostname>"
+
+# The scripts sets the timezone to CET (UTC+1). Disable (false) or
+# changes timezone if needed!
+set_timezone: true
+use_timezone: "Europe/Berlin"
+
+# Req 64: The management of the operating system must be done via a dedicated
+# management network which is independent from the production network.
+# ------------------------------------------------------------------------
 # IMPORTANT:
-# If you enable mac only default profiles will enabled. Please check
-# if additional profiles are needed.
+# Set an IPv4 and/or IPv6 address for management network for your
+# environment!
 # ------------------------------------------------------------------------
-config_mac: true
-
-# Req 44: If SELinux or AppArmor is used, it must not be disabled in bootloader
-# configuration.
-config_mac_grub: true
-
-# Req 45: If SELinux is used, its state must be enforced.
-config_sel_enforced: true
-
-# Req 46: If SELinux is used, the policy must be configured.
-config_sel_policy: true
-
-# Req 47: If SELinux is used, SETroubleshoot and MCS Translation Service must
-# not be installed.
-config_disable_sel_tools: true
-disable_sel_tools:
-  - "setroubleshoot"
-  - "mcstrans"
-
-# Req 48: If AppArmor is used, all profiles must be enforced.
-config_aa_enforced: true
-
-# Req 49: If a password is used as an authentication attribute, it must have
-# at least 8 characters and contain three of the following categories:
-# upper cases, lower case, numbers and special characters.
-config_password_rules: true
-set_min_length: 9   # 9 means length of 8! Check man for pam_pwquality.so
-set_min_class: 3
-
-# Req 50: If a password is used as an authentication attribute, a protection
-# against brute force and dictionary attacks that hinder password guessing
-# must be implemented.
-config_bf_protection: true
-set_failed_login_attemps: 5
-# Set unlock time in minutes to enable account automatically.
-set_unlock_time: 5
-
-# ----------
-# 05 Logging
-# ----------
-
-# Req 51: Security relevant events must be logged with a precise timestamp and
-# a unique system reference.
-# Enable or disable the use of auditd. This is needed for the logging of
-# all following events!
-config_auditd: true
-
-set_log_events:
-  # log modification of date and time information
-  - "-a always,exit -F arch=b64 -S adjtimex -S settimeofday -k time-change"
-  - "-a always,exit -F arch=b32 -S adjtimex -S settimeofday -S stime -k time-change"
-  - "-a always,exit -F arch=b64 -S clock_settime -k time-change"
-  - "-a always,exit -F arch=b32 -S clock_settime -k time-change"
-  - "-w /etc/localtime -p wa -k time-change"
-
-  # log modification of user/group information
-  - "-w /etc/group -p wa -k identity"
-  - "-w /etc/passwd -p wa -k identity"
-  - "-w /etc/gshadow -p wa -k identity"
-  - "-w /etc/shadow -p wa -k identity"
-  - "-w /etc/security/opasswd -p wa -k identity"
-
-  # log modification of the system's network environment
-  - "-a always,exit -F arch=b64 -S sethostname -S setdomainname -k system-locale"
-  - "-a always,exit -F arch=b32 -S sethostname -S setdomainname -k system-locale"
-  - "-w /etc/issue -p wa -k system-locale"
-  - "-w /etc/issue.net -p wa -k system-locale"
-  - "-w /etc/hosts -p wa -k system-locale"
-  - "-w /etc/network -p wa -k system-locale"
-  - "-w /etc/networks -p wa -k system-locale"
-
-  # log login and logout events
-  - "-w /var/log/faillog -p wa -k logins"
-  - "-w /var/log/lastlog -p wa -k logins"
-  - "-w /var/log/tallylog -p wa -k logins"
-
-  # log session initiation information
-  - "-w /var/run/utmp -p wa -k session"
-  - "-w /var/log/wtmp -p wa -k session"
-  - "-w /var/log/btmp -p wa -k session"
-
-  # log modification of discretionary access control permission
-  - "-a always,exit -F arch=b64 -S chmod -S fchmod -S fchmodat -F auid>=1000 -F auid!=4294967295 -k perm_mod"
-  - "-a always,exit -F arch=b32 -S chmod -S fchmod -S fchmodat -F auid>=1000 -F auid!=4294967295 -k perm_mod"
-  - "-a always,exit -F arch=b64 -S chown -S fchown -S fchownat -S lchown -F auid>=1000 -F auid!=4294967295 -k perm_mod"
-  - "-a always,exit -F arch=b32 -S chown -S fchown -S fchownat -S lchown -F auid>=1000 -F auid!=4294967295 -k perm_mod"
-  - "-a always,exit -F arch=b64 -S setxattr -S lsetxattr -S fsetxattr -S removexattr -S lremovexattr -S fremovexattr -F auid>=1000 -F auid!=4294967295 -k perm_mod"
-  - "-a always,exit -F arch=b32 -S setxattr -S lsetxattr -S fsetxattr -S removexattr -S lremovexattr -S fremovexattr -F auid>=1000 -F auid!=4294967295 -k perm_mod"
-
-  # log unsuccessful unauthorized file access attempts
-  - "-a always,exit -F arch=b64 -S creat -S open -S openat -S truncate -S ftruncate -F exit=-EACCES -F auid>=1000 -F auid!=4294967295 -k access"
-  - "-a always,exit -F arch=b32 -S creat -S open -S openat -S truncate -S ftruncate -F exit=-EACCES -F auid>=1000 -F auid!=4294967295 -k access"
-  - "-a always,exit -F arch=b64 -S creat -S open -S openat -S truncate -S ftruncate -F exit=-EPERM -F auid>=1000 -F auid!=4294967295 -k access"
-  - "-a always,exit -F arch=b32 -S creat -S open -S openat -S truncate -S ftruncate -F exit=-EPERM -F auid>=1000 -F auid!=4294967295 -k access"
-
-  # log successful file system mounts
-  - "-a always,exit -F arch=b64 -S mount -F auid>=1000 -F auid!=4294967295 -k mounts"
-  - "-a always,exit -F arch=b32 -S mount -F auid>=1000 -F auid!=4294967295 -k mounts"
-
-  # log file deletion events by users
-  # - "-a always,exit -F arch=b64 -S unlink -S unlinkat -S rename -S renameat -F auid>=1000 -F auid!=4294967295 -k delete"
-  # - "-a always,exit -F arch=b32 -S unlink -S unlinkat -S rename -S renameat -F auid>=1000 -F auid!=4294967295 -k delete"
-
-  # log changes to system administration scope (sudoers)
-  - "-w /etc/sudoers -p wa -k scope"
-  - "-w /etc/sudoers.d -p wa -k scope"
-
-  # log system administrator actions (sudolog)
-  - "-w /var/log/sudo.log -p wa -k actions"
-
-  # log kernel module loading and unloading
-  - "-w /sbin/insmod -p x -k modules"
-  - "-w /sbin/rmmod -p x -k modules"
-  - "-w /sbin/modprobe -p x -k modules"
-  - "-a always,exit arch=b64 -S init_module -S delete_module -k modules"
-
-# Enable logging for MAC. If AppArmor or SELinux is used will be
-# automatically detected!
-set_mac_logging: true
-
-# log modification of mandatory access controls (selinux)
-set_selinux_events: "-w /etc/selinux/ -p wa -k MAC-policy"
-
-# log modification of mandatory access controls (apparmor)
-set_apparmor_events:
-  - "-w /etc/apparmor/ -p wa -k MAC-policy"
-  - "-w /etc/apparmor.d/ -p wa -k MAC-policy"
-
-# log use of privileged commands
-set_priv_command_logging: true
-
-# Req 52: Log rotate for logfiles must be configured.
-# Define maximal size (MB) for auditd log files.
-config_log_rotate: true
-set_max_log_file_size: 10
-# Define auditd action if max. logfile size is reached.
-set_log_file_action: "ROTATE"
-
-# Time to rotate logfiles (daily, weekly, monthly).
-use_rotate_time: "daily"
-# Number of rotates.
-use_rotate_count: 7
-# Maximal size of logfiles.
-use_rotate_maxsize: "200M"
-# Maximal age of log files. Files older will be deleted.
-use_rotate_maxage: 60
-
-# Req 53: Security relevant logging data must be send to an external system
-# direct after their creation.
-# Variables for logging System must be set in '/defaults/main.yml'.
-
-# Req 54: System time must be synchronized against a reference time source.
-# Variables for NTP must be set in '/defaults/main.yml'.
-# Enable NTP server on system by changing this variable to true.
-set_ntp_server_enable: false
-
-#---------------------
-# 06 System Management
-#---------------------
-
-# Req 55: The administration of the operating system must be done via a
-# dedicated management network which is independent from the production
-# network.
-# Variables for mgmt. network must be set in '/defaults/main.yml'.
-
-# ---------
-# -  SSH  -
-# ---------
-
-# Disable (false) if SSH is not used for management.
-config_ssh_server: true
-use_ssh_ps: 'yes'
-
-# Set port for SSH.
-use_ssh_server_ports:
-  - 22
-  # -  you can define more if needed.
-
-# Req 58: SSH moduli smaller than 2048 must not be used.
-use_moduli_minimum: 2048
-
-# Req 59: Only approved ciphers & key exchange algorithms must be used.
-use_ssh_key_ex:
-  - curve25519-sha256@libssh.org
-  - diffie-hellman-group-exchange-sha256
-
-use_ssh_ciphers:
-  - chacha20-poly1305@openssh.com
-  - aes256-gcm@openssh.com
-  - aes128-gcm@openssh.com
-  - aes256-ctr
-  - aes192-ctr
-  - aes128-ctr
-
-# Req 60: Only approved MAC algorithms must be used.
-use_ssh_macs:
-  - hmac-sha2-512-etm@openssh.com
-  - hmac-sha2-256-etm@openssh.com
-  - hmac-ripemd160-etm@openssh.com
-  - umac-128-etm@openssh.com
-  - hmac-sha2-512
-  - hmac-sha2-256
-  - hmac-ripemd160
-
-# Req xx: SSH Version 2 must be used.
-# use_ssh_version: 2
-# Obsolet with OpenSSH version 7.4
-
-# Req 61: SSH logging must at least set to VERBOSE.
-# Set logging for sshd. Choose:
-# FATAL - very serious events
-# ERROR - serious events
-# INFO - events and status information
-# VERBOSE - more or less everything
-use_ssh_syslogfacility: "AUTH"
-use_ssh_loglevel: "VERBOSE"
-
-# Req 62: SSH LoginGraceTime must be set to one minute or less.
-use_login_grace_time: 120
-
-# Req 63: SSH MaxAuthTries must be set to 5 or less.
-use_max_auth_tries: 5
-use_max_sessions: 10
-use_max_startups: "10:30:100"
-
-# Req 64: SSH root login must be disabled.
-use_allow_root_login: false
-
-# Req 65: SSH strict mode must be enabled.
-use_strict_mode: true
-
-# Req 66: SSH user authentication must be done with public keys.
-use_pubkey_auth: true
-
-# Req 67: SSH password authentication must be disabled.
-use_password_auth: false
-use_permit_empty_pw: false
-use_challenge_response: false
-
-# Req 68: SSH IgnoreRhosts must be enabled.
-use_ignore_rhosts: true
-
-# Req 69: SSH HostbasedAuthentication must be disabled.
-use_host_based_auth: false
-use_ignore_known_hosts: true
-
-# Req 70: The usage of the SSH service must be restricted to dedicated
-# groups or users.
-# PAM must be disabled to use SSH config to ristrict users and groups.
-use_pam_for_ssh: false
-ssh_deny_users: ''
-ssh_allow_users: ''
-ssh_deny_groups: ''
-ssh_allow_groups: ''
-
-# Req 71: The SSH Idle Timeout Interval must be configured to an adequate
-# time.
-use_tcp_keepalive: false
-# Client alive time in seconds.
-use_client_alive_interval: 300
-# Client active count.
-use_client_alive_count: 0
-
-# Req 72: SSH tunnel devices must not be used.
-use_permit_tunnel: false
-
-# Req 73: SSH TCP port forwarding must be disabled.
-use_allow_tcp_forwarding: false
-
-# Req 74: SSH agent forwarding must be disabled.
-use_allow_agent_forwarding: false
-
-# Req 75: SSH gateway ports must be disabled.
-use_gw_ports: false
-
-# Req 76: SSH X11 forwarding must be disabled.
-use_x11_forwarding: false
-
-# Req 77: SSH PermitUserEnvironment must be disabled.
-use_permit_user_env: false
-
-# Req 78: If SFTP is activated, internal SFTP server of OpenSSH must
-# be used.
-set_sftp_enabled: true
-set_sftp_chroot: false
-use_sftp_logging: VERBOSE
-use_sftp_group: 'sftpusr'
-use_sftp_chroot_dir: /home/%u
-use_sftp_tcp_forwarding: false
-use_sftp_agent_forwarding: false
-use_sftp_password_auth: false
-use_sftp_root_login: false
-use_sftp_x11_forwardning: false
+# Enable if a dedicated IPv4 management interface is used.
+config_mgmt_interface_ipv4: false
+# Define IPv4 address for mgmt interface.
+use_mgmt_interface_ipv4: "0.0.0.0"
+# Enable if a dedicated IPv6 management interface is used.
+config_mgmt_interface_ipv6: false
+# Define IPv6 address for mgmt interface.
+use_mgmt_interface_ipv6: "::"
