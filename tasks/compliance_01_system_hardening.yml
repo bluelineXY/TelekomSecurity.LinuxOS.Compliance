@@ -308,6 +308,15 @@
   rescue:
     - debug:
         msg: "WARNING: Xinetd is insalled!"
+- block:
+    - name: req-007.4a check if rsync is disabled
+      service: name=rsync state=started enabled=yes
+      changed_when: false
+      check_mode: no
+  rescue:
+    - debug:
+        msg: "WARNING: Rsync is enabled!"
+        
 
 - block:
     - name: req-007.4 check if rsync is disabled
